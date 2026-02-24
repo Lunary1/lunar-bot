@@ -40,14 +40,17 @@ export const useAuth = () => {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        // getUser() validates the token against the Supabase auth server,
+        // preventing stale / revoked tokens from appearing as valid sessions.
         const {
-          data: { session },
-        } = await supabase.auth.getSession();
+          data: { user },
+          error,
+        } = await supabase.auth.getUser();
 
         if (!mounted) return;
 
-        if (session?.user) {
-          await fetchUserProfile(session.user.id);
+        if (user && !error) {
+          await fetchUserProfile(user.id);
         } else {
           setAuthState((prev) => ({ ...prev, loading: false }));
         }
