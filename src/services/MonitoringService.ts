@@ -1,11 +1,12 @@
 import { Queue } from "bullmq";
 import { supabase } from "../app/lib/supabaseServer";
+import { QUEUE_NAMES } from "../lib/queues";
 
 export class MonitoringService {
   private monitoringQueue: Queue;
 
   constructor(redisConnection: any) {
-    this.monitoringQueue = new Queue("monitoring-queue", {
+    this.monitoringQueue = new Queue(QUEUE_NAMES.MONITORING, {
       connection: redisConnection,
     });
   }

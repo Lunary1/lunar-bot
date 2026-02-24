@@ -1,6 +1,7 @@
 import { Queue, Worker, Job } from "bullmq";
 import { supabase } from "@/app/lib/supabaseClient";
 import { decryptSensitiveData } from "@/lib/encryption";
+import { QUEUE_NAMES } from "@/lib/queues";
 import { StoreBot } from "@/bots/base/StoreBot";
 import { DreamlandBot } from "@/bots/dreamland/DreamlandBot";
 import { PokemonCenterBot } from "@/bots/pokemon-center/PokemonCenterBot";
@@ -31,7 +32,7 @@ export class TaskExecutor {
 
   constructor(redisConnection: any) {
     // Create task queue
-    this.queue = new Queue("task-execution", {
+    this.queue = new Queue(QUEUE_NAMES.TASK_EXECUTION, {
       connection: redisConnection,
       defaultJobOptions: {
         removeOnComplete: 10,
@@ -45,7 +46,7 @@ export class TaskExecutor {
     });
 
     // Create scraping queue
-    this.scrapingQueue = new Queue("product-scraping", {
+    this.scrapingQueue = new Queue(QUEUE_NAMES.SCRAPING, {
       connection: redisConnection,
       defaultJobOptions: {
         removeOnComplete: 10,
@@ -59,19 +60,19 @@ export class TaskExecutor {
     });
 
     // Create worker
-    this.worker = new Worker("task-execution", this.processTask.bind(this), {
+    this.worker = new Worker(QUEUE_NAMES.TASK_EXECUTION, this.processTask.bind(this), {
       connection: redisConnection,
       concurrency: 5,
     });
 
     // Create scraping worker
     this.scrapingWorker = new Worker(
-      "product-scraping",
+      QUEUE_NAMES.SCRAPING,
       this.processScrapingJob.bind(this),
       {
         connection: redisConnection,
         concurrency: 3,
-      }
+      },
     );
 
     // Initialize product scraper
@@ -152,7 +153,7 @@ export class TaskExecutor {
       const result = await this.executeBotTask(
         taskDetails,
         accountDetails,
-        proxyDetails
+        proxyDetails,
       );
 
       if (result.success) {
@@ -168,7 +169,7 @@ export class TaskExecutor {
         taskId,
         "failed",
         null,
-        error instanceof Error ? error.message : "Unknown error"
+        error instanceof Error ? error.message : "Unknown error",
       );
       throw error;
     }
@@ -182,7 +183,7 @@ export class TaskExecutor {
         *,
         product:products(*),
         store_account:user_store_accounts(*)
-      `
+      `,
       )
       .eq("id", taskId)
       .single();
@@ -198,7 +199,7 @@ export class TaskExecutor {
         `
         *,
         store:stores(*)
-      `
+      `,
       )
       .eq("id", accountId)
       .single();
@@ -221,7 +222,7 @@ export class TaskExecutor {
   private async executeBotTask(
     taskDetails: any,
     accountDetails: any,
-    proxyDetails: any
+    proxyDetails: any,
   ) {
     let bot: StoreBot | null = null;
 
@@ -238,7 +239,7 @@ export class TaskExecutor {
               retryAttempts: 3,
               delayBetweenActions: 2000,
             },
-            proxyDetails
+            proxyDetails,
           );
           break;
 
@@ -251,7 +252,7 @@ export class TaskExecutor {
               retryAttempts: 3,
               delayBetweenActions: 2000,
             },
-            proxyDetails
+            proxyDetails,
           );
           break;
 
@@ -264,7 +265,7 @@ export class TaskExecutor {
               retryAttempts: 3,
               delayBetweenActions: 2000,
             },
-            proxyDetails
+            proxyDetails,
           );
           break;
 
@@ -282,18 +283,20 @@ export class TaskExecutor {
       // Decrypt stored password before use — passwords are stored encrypted at rest
       let plaintextPassword: string;
       try {
-        plaintextPassword = decryptSensitiveData(accountDetails.password_encrypted);
+        plaintextPassword = decryptSensitiveData(
+          accountDetails.password_encrypted,
+        );
       } catch (decryptErr) {
         throw new Error(
           `Failed to decrypt store account credentials for account ${accountDetails.id}. ` +
-          `Ensure ENCRYPTION_KEY env var matches the key used when the account was saved. ` +
-          `Original error: ${decryptErr instanceof Error ? decryptErr.message : String(decryptErr)}`
+            `Ensure ENCRYPTION_KEY env var matches the key used when the account was saved. ` +
+            `Original error: ${decryptErr instanceof Error ? decryptErr.message : String(decryptErr)}`,
         );
       }
 
       const loginResult = await bot.login(
         accountDetails.username,
-        plaintextPassword
+        plaintextPassword,
       );
 
       if (!loginResult.success) {
@@ -302,7 +305,7 @@ export class TaskExecutor {
 
       // Check if product is available
       const productResult = await bot.getProductDetails(
-        taskDetails.product.url
+        taskDetails.product.url,
       );
       if (!productResult.success || !productResult.product?.availability) {
         throw new Error("Product is not available");
@@ -311,7 +314,7 @@ export class TaskExecutor {
       // Add to cart
       const cartResult = await bot.addToCart(
         taskDetails.product.id,
-        taskDetails.quantity || 1
+        taskDetails.quantity || 1,
       );
 
       if (!cartResult.success) {
@@ -348,7 +351,7 @@ export class TaskExecutor {
     taskId: string,
     status: string,
     data?: any,
-    errorMessage?: string
+    errorMessage?: string,
   ) {
     const updateData: any = {
       status,
@@ -390,7 +393,7 @@ export class TaskExecutor {
           user_id,
           product_id,
           product:products(name, current_price, store:stores(id))
-        `
+        `,
         )
         .eq("id", taskId)
         .single();
@@ -418,7 +421,7 @@ export class TaskExecutor {
       });
 
       console.log(
-        `Scraping job for product ${scrapingData.productId} queued with job ID: ${job.id}`
+        `Scraping job for product ${scrapingData.productId} queued with job ID: ${job.id}`,
       );
       return job;
     } catch (error) {
@@ -430,7 +433,7 @@ export class TaskExecutor {
   private async processScrapingJob(job: Job<ScrapingJobData>) {
     try {
       console.log(
-        `Processing scraping job ${job.id} for product ${job.data.productId}`
+        `Processing scraping job ${job.id} for product ${job.data.productId}`,
       );
       await this.productScraper.scrapeProduct(job);
     } catch (error) {

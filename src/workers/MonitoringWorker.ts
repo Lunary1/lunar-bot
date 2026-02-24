@@ -1,6 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { DreamlandBot } from "../bots/dreamland/DreamlandBot";
 import { supabase } from "../app/lib/supabaseServer";
+import { QUEUE_NAMES } from "../lib/queues";
 
 export interface MonitoringTaskData {
   watchlistItemId: string;
@@ -31,7 +32,7 @@ export class MonitoringWorker {
 
   constructor(redisConnection: any) {
     this.worker = new Worker(
-      "monitoring-queue",
+      QUEUE_NAMES.MONITORING,
       this.processMonitoringTask.bind(this),
       {
         connection: redisConnection,

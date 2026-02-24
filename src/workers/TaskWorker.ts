@@ -3,6 +3,7 @@ import { BotManager, BotInstance } from "../bots/BotManager";
 import { supabase } from "../app/lib/supabaseClient";
 import { decryptSensitiveData } from "../lib/encryption";
 import { StoreBot } from "../bots/base/StoreBot";
+import { QUEUE_NAMES } from "../lib/queues";
 
 export interface TaskData {
   taskId: string;
@@ -31,7 +32,7 @@ export class TaskWorker {
   constructor(redisConnection: any) {
     this.botManager = new BotManager();
 
-    this.worker = new Worker("task-queue", this.processTask.bind(this), {
+    this.worker = new Worker(QUEUE_NAMES.TASK_EXECUTION, this.processTask.bind(this), {
       connection: redisConnection,
       concurrency: 5, // Process up to 5 tasks concurrently
       removeOnComplete: 100, // Keep last 100 completed jobs
@@ -77,7 +78,7 @@ export class TaskWorker {
       // Get or create bot for this store
       const botInstance = await this.getOrCreateBot(
         storeAccount.store_id,
-        proxy
+        proxy,
       );
       if (!botInstance) {
         throw new Error("Failed to create bot instance");
@@ -92,14 +93,14 @@ export class TaskWorker {
         taskDetails,
         storeAccount,
         maxPrice,
-        autoPurchase
+        autoPurchase,
       );
 
       // Update task status
       await this.updateTaskStatus(
         taskId,
         result.success ? "completed" : "failed",
-        result.message
+        result.message,
       );
 
       // Complete task in bot manager
@@ -129,7 +130,7 @@ export class TaskWorker {
     taskDetails: any,
     storeAccount: any,
     maxPrice?: number,
-    autoPurchase: boolean = false
+    autoPurchase: boolean = false,
   ): Promise<TaskResult> {
     try {
       const bot = botInstance.bot;
@@ -138,18 +139,24 @@ export class TaskWorker {
       // Decrypt stored password before use — passwords are stored encrypted at rest
       let plaintextPassword: string;
       try {
-        plaintextPassword = decryptSensitiveData(storeAccount.password_encrypted);
+        plaintextPassword = decryptSensitiveData(
+          storeAccount.password_encrypted,
+        );
       } catch (decryptErr) {
         return {
           success: false,
-          message: "Failed to decrypt store account credentials. Ensure ENCRYPTION_KEY matches the key used when the account was saved.",
-          error: decryptErr instanceof Error ? decryptErr.message : String(decryptErr),
+          message:
+            "Failed to decrypt store account credentials. Ensure ENCRYPTION_KEY matches the key used when the account was saved.",
+          error:
+            decryptErr instanceof Error
+              ? decryptErr.message
+              : String(decryptErr),
         };
       }
 
       const loginResult = await bot.login(
         storeAccount.username,
-        plaintextPassword
+        plaintextPassword,
       );
       if (!loginResult.success) {
         return {
@@ -161,7 +168,7 @@ export class TaskWorker {
 
       // Get product details
       const productResult = await bot.getProductDetails(
-        taskDetails.product.url
+        taskDetails.product.url,
       );
       if (!productResult.success || !productResult.product) {
         return {
@@ -245,7 +252,7 @@ export class TaskWorker {
    */
   private async getOrCreateBot(
     storeId: string,
-    proxy?: any
+    proxy?: any,
   ): Promise<BotInstance | null> {
     try {
       // Check if we already have an available bot for this store
@@ -267,7 +274,7 @@ export class TaskWorker {
       const result = await this.botManager.createBot(
         storeId as any,
         botConfig,
-        proxy
+        proxy,
       );
       if (!result.success || !result.botId) {
         return null;
@@ -291,7 +298,7 @@ export class TaskWorker {
         *,
         product:products(*),
         store_account:user_store_accounts(*)
-      `
+      `,
       )
       .eq("id", taskId)
       .single();
@@ -346,7 +353,7 @@ export class TaskWorker {
   private async updateTaskStatus(
     taskId: string,
     status: string,
-    message?: string
+    message?: string,
   ): Promise<void> {
     try {
       const updateData: any = {
@@ -429,4 +436,3 @@ export class TaskWorker {
     };
   }
 }
-
