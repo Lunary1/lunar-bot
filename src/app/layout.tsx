@@ -1,11 +1,12 @@
-"use client";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { createPagesBrowserClient } from "@supabase/auth-helpers-nextjs";
-import { SessionContextProvider } from "@supabase/auth-helpers-react";
 import { AuthProvider } from "@/components/auth-provider";
-import { useState } from "react";
+
+export const metadata: Metadata = {
+  title: "LunarBot",
+  description: "Pokémon shopping bot automation platform",
+};
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -22,15 +23,12 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [supabaseClient] = useState(() => createPagesBrowserClient());
   return (
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <SessionContextProvider supabaseClient={supabaseClient}>
-          <AuthProvider>{children}</AuthProvider>
-        </SessionContextProvider>
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );
