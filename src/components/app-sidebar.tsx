@@ -118,12 +118,12 @@ const items = [
 ];
 
 export function AppSidebar() {
-  const { user, profile } = useAuthContext();
+  const { user, profile, signOut } = useAuthContext();
   const router = useRouter();
   const pathname = usePathname();
 
   const handleLogout = async () => {
-    // TODO: Implement proper logout functionality
+    await signOut();
     router.push("/login");
   };
 

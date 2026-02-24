@@ -24,11 +24,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Update the watchlist item status
-    // For now, we'll just return success as the actual monitoring logic
-    // would be handled by the task system
     const { error } = await supabase
       .from("user_watchlists")
       .update({
+        enabled,
         updated_at: new Date().toISOString(),
       })
       .eq("id", itemId)
