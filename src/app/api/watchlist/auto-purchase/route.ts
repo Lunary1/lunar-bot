@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     if (!watchlistId) {
       return NextResponse.json(
         { error: "Watchlist ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       console.error("Error updating watchlist:", error);
       return NextResponse.json(
         { error: "Failed to update watchlist" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
     console.error("Auto-purchase update error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
           image_url,
           store:stores(id, name)
         )
-      `
+      `,
       )
       .eq("user_id", user.id)
       .eq("auto_purchase", true)
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching watchlist items:", error);
       return NextResponse.json(
         { error: "Failed to fetch watchlist items" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
     console.error("Get auto-purchase items error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

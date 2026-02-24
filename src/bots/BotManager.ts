@@ -34,7 +34,7 @@ export class BotManager {
   async createBot(
     type: string,
     config: any,
-    proxy?: any
+    proxy?: any,
   ): Promise<{ success: boolean; botId?: string; error?: string }> {
     try {
       const botId = this.generateBotId();
@@ -122,7 +122,7 @@ export class BotManager {
    */
   getAvailableBots(): BotInstance[] {
     return Array.from(this.bots.values()).filter(
-      (bot) => bot.status === "idle"
+      (bot) => bot.status === "idle",
     );
   }
 
@@ -350,18 +350,18 @@ export class BotManager {
     const allBots = Array.from(this.bots.values());
     const totalTasks = allBots.reduce(
       (sum, bot) => sum + bot.performance.totalTasks,
-      0
+      0,
     );
     const successfulTasks = allBots.reduce(
       (sum, bot) => sum + bot.performance.successfulTasks,
-      0
+      0,
     );
     const failedTasks = allBots.reduce(
       (sum, bot) => sum + bot.performance.failedTasks,
-      0
+      0,
     );
     const runningBots = allBots.filter(
-      (bot) => bot.status === "running"
+      (bot) => bot.status === "running",
     ).length;
     const idleBots = allBots.filter((bot) => bot.status === "idle").length;
     const errorBots = allBots.filter((bot) => bot.status === "error").length;
@@ -416,7 +416,7 @@ export class BotManager {
             error: error instanceof Error ? error.message : "Unknown error",
           };
         }
-      })
+      }),
     );
 
     const healthy = results.filter((r) => r.healthy).length;
@@ -436,4 +436,3 @@ export class BotManager {
     return `bot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 }
-

@@ -32,12 +32,16 @@ export class TaskWorker {
   constructor(redisConnection: any) {
     this.botManager = new BotManager();
 
-    this.worker = new Worker(QUEUE_NAMES.TASK_EXECUTION, this.processTask.bind(this), {
-      connection: redisConnection,
-      concurrency: 5, // Process up to 5 tasks concurrently
-      removeOnComplete: 100, // Keep last 100 completed jobs
-      removeOnFail: 50, // Keep last 50 failed jobs
-    });
+    this.worker = new Worker(
+      QUEUE_NAMES.TASK_EXECUTION,
+      this.processTask.bind(this),
+      {
+        connection: redisConnection,
+        concurrency: 5, // Process up to 5 tasks concurrently
+        removeOnComplete: 100, // Keep last 100 completed jobs
+        removeOnFail: 50, // Keep last 50 failed jobs
+      },
+    );
 
     this.setupEventListeners();
   }
@@ -292,7 +296,9 @@ export class TaskWorker {
         proxy,
       );
       if (!result.success || !result.botId) {
-        console.error(`Failed to create bot for store "${storeName}": ${result.error}`);
+        console.error(
+          `Failed to create bot for store "${storeName}": ${result.error}`,
+        );
         return null;
       }
 

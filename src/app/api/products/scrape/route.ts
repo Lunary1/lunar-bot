@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
     if (!productId || !url || !storeId) {
       return NextResponse.json(
         { error: "Product ID, URL, and Store ID are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
       if (!productData) {
         return NextResponse.json(
           { error: "Failed to scrape product data" },
-          { status: 500 }
+          { status: 500 },
         );
       }
 
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         console.error("Error updating product:", updateError);
         return NextResponse.json(
           { error: "Failed to update product in database" },
-          { status: 500 }
+          { status: 500 },
         );
       }
 
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     console.error("Product scraping error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     if (!productId) {
       return NextResponse.json(
         { error: "Product ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
           price,
           date
         )
-      `
+      `,
       )
       .eq("id", productId)
       .single();
@@ -113,7 +113,7 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching product:", error);
       return NextResponse.json(
         { error: "Failed to fetch product" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
     console.error("Get product error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

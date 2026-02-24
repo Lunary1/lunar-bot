@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
           name,
           base_url
         )
-      `
+      `,
       )
       .eq("user_id", user.id)
       .order("created_at", { ascending: false });
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       return NextResponse.json(
         { error: "Failed to fetch watchlist items" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     console.error("Watchlist items error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

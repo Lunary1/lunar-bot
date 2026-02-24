@@ -15,7 +15,7 @@ export class MonitoringService {
    * Schedule monitoring for a watchlist item
    */
   async scheduleMonitoring(
-    watchlistItemId: string
+    watchlistItemId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
       const supabase = getSupabaseServer();
@@ -33,7 +33,7 @@ export class MonitoringService {
             id,
             store_id
           )
-        `
+        `,
         )
         .eq("id", watchlistItemId)
         .single();
@@ -61,7 +61,7 @@ export class MonitoringService {
           jobId: `monitor-${watchlistItemId}`, // Unique job ID
           removeOnComplete: 10,
           removeOnFail: 5,
-        }
+        },
       );
 
       return {
@@ -81,7 +81,7 @@ export class MonitoringService {
    * Stop monitoring for a watchlist item
    */
   async stopMonitoring(
-    watchlistItemId: string
+    watchlistItemId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // Remove the monitoring job
@@ -128,7 +128,7 @@ export class MonitoringService {
             id,
             store_id
           )
-        `
+        `,
         )
         .eq("status", "monitoring");
 

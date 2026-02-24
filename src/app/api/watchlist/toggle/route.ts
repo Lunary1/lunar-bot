@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     if (!itemId || typeof enabled !== "boolean") {
       return NextResponse.json(
         { error: "Item ID and enabled status are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       return NextResponse.json(
         { error: "Failed to update monitoring status" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     console.error("Toggle monitoring error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

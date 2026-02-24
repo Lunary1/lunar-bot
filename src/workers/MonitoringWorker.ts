@@ -39,7 +39,7 @@ export class MonitoringWorker {
         concurrency: 3, // Process up to 3 monitoring tasks concurrently
         removeOnComplete: 50, // Keep last 50 completed jobs
         removeOnFail: 25, // Keep last 25 failed jobs
-      }
+      },
     );
 
     this.setupEventListeners();
@@ -49,7 +49,7 @@ export class MonitoringWorker {
    * Process a monitoring task
    */
   private async processMonitoringTask(
-    job: Job<MonitoringTaskData>
+    job: Job<MonitoringTaskData>,
   ): Promise<MonitoringResult> {
     const {
       watchlistItemId,
@@ -78,7 +78,7 @@ export class MonitoringWorker {
       try {
         // Get current product information
         const currentProductInfo = await bot.getProductDetails(
-          productDetails.url
+          productDetails.url,
         );
 
         if (!currentProductInfo.success || !currentProductInfo.product) {
@@ -109,7 +109,7 @@ export class MonitoringWorker {
             const purchaseResult = await this.attemptPurchase(
               bot,
               product,
-              userId
+              userId,
             );
 
             if (purchaseResult.success) {
@@ -233,7 +233,7 @@ export class MonitoringWorker {
    */
   private async updateProductInfo(
     productId: string,
-    updates: any
+    updates: any,
   ): Promise<void> {
     const supabase = getSupabaseServer();
     const { error } = await supabase
@@ -252,13 +252,13 @@ export class MonitoringWorker {
   private async attemptPurchase(
     bot: any,
     product: any,
-    userId: string
+    userId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // This would require user's store account and payment details
       // For now, we'll just return a placeholder
       console.log(
-        `Would attempt to purchase ${product.name} for user ${userId}`
+        `Would attempt to purchase ${product.name} for user ${userId}`,
       );
 
       return {
@@ -297,7 +297,7 @@ export class MonitoringWorker {
   private async sendAlert(
     userId: string,
     product: any,
-    message: string
+    message: string,
   ): Promise<void> {
     const supabase = getSupabaseServer();
     // This would integrate with notification system

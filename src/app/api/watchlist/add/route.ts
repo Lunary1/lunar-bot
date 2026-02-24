@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     if (!product || !product.name || !product.url) {
       return NextResponse.json(
         { error: "Product information is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       if (storeError) {
         return NextResponse.json(
           { error: "Failed to create store" },
-          { status: 500 }
+          { status: 500 },
         );
       }
       storeId = newStore.id;
@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
       if (productError) {
         return NextResponse.json(
           { error: "Failed to create product" },
-          { status: 500 }
+          { status: 500 },
         );
       }
       productId = newProduct.id;
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     if (watchlistError) {
       return NextResponse.json(
         { error: "Failed to add to watchlist" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     console.error("Watchlist add error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
