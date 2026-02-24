@@ -101,31 +101,38 @@ export function ProxyManagement() {
 
     try {
       if (editingProxy) {
-        // Update existing proxy
-        const { error } = await supabase
-          .from("proxies")
-          .update({
+        // Update existing proxy — encryption happens server-side
+        const res = await fetch("/api/proxies", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: editingProxy.id,
             host: formData.host,
-            port: parseInt(formData.port),
+            port: formData.port,
             username: formData.username || null,
-            password_encrypted: formData.password
-              ? btoa(formData.password)
-              : undefined,
-          })
-          .eq("id", editingProxy.id);
-
-        if (error) throw error;
-      } else {
-        // Create new proxy
-        const { error } = await supabase.from("proxies").insert({
-          user_id: user.id,
-          host: formData.host,
-          port: parseInt(formData.port),
-          username: formData.username || null,
-          password_encrypted: btoa(formData.password),
+            ...(formData.password ? { password: formData.password } : {}),
+          }),
         });
-
-        if (error) throw error;
+        if (!res.ok) {
+          const { error } = await res.json();
+          throw new Error(error ?? "Failed to update proxy");
+        }
+      } else {
+        // Create new proxy — encryption happens server-side
+        const res = await fetch("/api/proxies", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            host: formData.host,
+            port: formData.port,
+            username: formData.username || null,
+            password: formData.password,
+          }),
+        });
+        if (!res.ok) {
+          const { error } = await res.json();
+          throw new Error(error ?? "Failed to create proxy");
+        }
       }
 
       await loadProxies();
@@ -367,7 +374,7 @@ export function ProxyManagement() {
                         {getSuccessRateIcon(proxy.success_rate)}
                         <span
                           className={`font-medium ${getSuccessRateColor(
-                            proxy.success_rate
+                            proxy.success_rate,
                           )}`}
                         >
                           {proxy.success_rate.toFixed(1)}%
@@ -478,4 +485,3 @@ export function ProxyManagement() {
     </div>
   );
 }
-

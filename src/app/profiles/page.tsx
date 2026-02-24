@@ -66,7 +66,7 @@ export default function ProfilesPage() {
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingProfile, setEditingProfile] = useState<ShippingProfile | null>(
-    null
+    null,
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -160,7 +160,7 @@ export default function ProfilesPage() {
       if (editingProfile) {
         // Update existing profile
         const { error } = await supabase
-          .from("user_profiles")
+          .from("shipping_profiles")
           .update(profileData)
           .eq("id", editingProfile.id);
 
@@ -279,7 +279,7 @@ export default function ProfilesPage() {
       profile.profile_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       profile.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       profile.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      profile.email.toLowerCase().includes(searchTerm.toLowerCase())
+      profile.email.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   if (loading) {

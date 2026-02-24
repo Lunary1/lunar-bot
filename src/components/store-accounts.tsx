@@ -58,7 +58,7 @@ export function StoreAccounts() {
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingAccount, setEditingAccount] = useState<StoreAccount | null>(
-    null
+    null,
   );
   const [showPasswords, setShowPasswords] = useState<{
     [key: string]: boolean;
@@ -88,7 +88,7 @@ export function StoreAccounts() {
           `
           *,
           store:stores(name, base_url)
-        `
+        `,
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -131,29 +131,36 @@ export function StoreAccounts() {
 
     try {
       if (editingAccount) {
-        // Update existing account
-        const { error } = await supabase
-          .from("user_store_accounts")
-          .update({
+        // Update existing account — encryption happens server-side
+        const res = await fetch("/api/accounts", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: editingAccount.id,
             store_id: formData.store_id,
             username: formData.username,
-            password_encrypted: formData.password
-              ? btoa(formData.password)
-              : undefined,
-          })
-          .eq("id", editingAccount.id);
-
-        if (error) throw error;
-      } else {
-        // Create new account
-        const { error } = await supabase.from("user_store_accounts").insert({
-          user_id: user.id,
-          store_id: formData.store_id,
-          username: formData.username,
-          password_encrypted: btoa(formData.password),
+            ...(formData.password ? { password: formData.password } : {}),
+          }),
         });
-
-        if (error) throw error;
+        if (!res.ok) {
+          const { error } = await res.json();
+          throw new Error(error ?? "Failed to update account");
+        }
+      } else {
+        // Create new account — encryption happens server-side
+        const res = await fetch("/api/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            store_id: formData.store_id,
+            username: formData.username,
+            password: formData.password,
+          }),
+        });
+        if (!res.ok) {
+          const { error } = await res.json();
+          throw new Error(error ?? "Failed to create account");
+        }
       }
 
       await loadAccounts();
@@ -399,4 +406,3 @@ export function StoreAccounts() {
     </div>
   );
 }
-

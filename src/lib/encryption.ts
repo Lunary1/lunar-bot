@@ -10,7 +10,7 @@ interface EncryptionConfig {
 const DEFAULT_CONFIG: EncryptionConfig = {
   algorithm: "aes-256-gcm",
   keyLength: 32, // 256 bits
-  ivLength: 16, // 128 bits
+  ivLength: 12, // 96 bits — canonical GCM IV length
   tagLength: 16, // 128 bits
 };
 
@@ -21,41 +21,53 @@ export class EncryptionService {
   constructor(secretKey?: string, config: Partial<EncryptionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
-    if (secretKey) {
-      // Use provided secret key
-      this.key = crypto.scryptSync(secretKey, "salt", this.config.keyLength);
+    const key = secretKey ?? process.env.ENCRYPTION_KEY;
+    if (!key) {
+      throw new Error(
+        "Encryption key not provided. Set ENCRYPTION_KEY environment variable.",
+      );
+    }
+
+    // Use a per-installation random salt stored in ENCRYPTION_SALT env var.
+    // Fall back to a static string with a warning so existing dev environments
+    // don't break immediately, but production MUST set ENCRYPTION_SALT.
+    let salt: Buffer | string;
+    if (process.env.ENCRYPTION_SALT) {
+      salt = Buffer.from(process.env.ENCRYPTION_SALT, "base64");
     } else {
-      // Use environment variable or generate new key
-      const envKey = process.env.ENCRYPTION_KEY;
-      if (envKey) {
-        this.key = crypto.scryptSync(envKey, "salt", this.config.keyLength);
-      } else {
+      if (process.env.NODE_ENV === "production") {
         throw new Error(
-          "Encryption key not provided. Set ENCRYPTION_KEY environment variable."
+          "ENCRYPTION_SALT is required in production. Generate one with: " +
+            "node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"",
         );
       }
+      console.warn(
+        "[EncryptionService] ENCRYPTION_SALT not set — using static fallback. " +
+          "Set ENCRYPTION_SALT in .env for production security.",
+      );
+      salt = "lunarbot-v1-static-salt";
     }
+
+    this.key = crypto.scryptSync(key, salt, this.config.keyLength);
   }
 
   /**
-   * Encrypt data
+   * Encrypt data using AES-256-GCM with a random 12-byte IV per call.
+   * Output format (base64): iv[12] || authTag[16] || ciphertext
    */
   encrypt(data: string): string {
     try {
-      const iv = crypto.randomBytes(this.config.ivLength);
-      const cipher = crypto.createCipher(this.config.algorithm, this.key);
-      cipher.setAAD(Buffer.from("lunarbot", "utf8"));
+      const iv = crypto.randomBytes(12); // 96-bit IV for GCM
+      const cipher = crypto.createCipheriv("aes-256-gcm", this.key, iv);
 
-      let encrypted = cipher.update(data, "utf8", "hex");
-      encrypted += cipher.final("hex");
+      const encrypted = Buffer.concat([
+        cipher.update(data, "utf8"),
+        cipher.final(),
+      ]);
+      const authTag = cipher.getAuthTag(); // always 16 bytes
 
-      const tag = cipher.getAuthTag();
-
-      // Combine IV, tag, and encrypted data
-      const combined =
-        iv.toString("hex") + ":" + tag.toString("hex") + ":" + encrypted;
-
-      return Buffer.from(combined).toString("base64");
+      // Binary layout: iv (12) | authTag (16) | ciphertext
+      return Buffer.concat([iv, authTag, encrypted]).toString("base64");
     } catch (error) {
       console.error("Encryption error:", error);
       throw new Error("Failed to encrypt data");
@@ -63,33 +75,63 @@ export class EncryptionService {
   }
 
   /**
-   * Decrypt data
+   * Decrypt data encrypted by encrypt().
+   * Also handles the legacy format (ivHex:tagHex:cipherHex encoded as base64)
+   * so that a migration script can re-encrypt existing DB rows without a hard cutover.
    */
   decrypt(encryptedData: string): string {
     try {
-      const combined = Buffer.from(encryptedData, "base64").toString("utf8");
-      const parts = combined.split(":");
+      const buf = Buffer.from(encryptedData, "base64");
 
-      if (parts.length !== 3) {
-        throw new Error("Invalid encrypted data format");
+      // Detect legacy format: base64-decoded string contains two `:` separators
+      const asText = buf.toString("utf8");
+      if (asText.split(":").length === 3) {
+        return this._decryptLegacy(asText);
       }
 
-      const iv = Buffer.from(parts[0], "hex");
-      const tag = Buffer.from(parts[1], "hex");
-      const encrypted = parts[2];
+      // New binary format: iv[12] | authTag[16] | ciphertext
+      if (buf.length < 28) {
+        throw new Error("Invalid encrypted data: too short");
+      }
+      const iv = buf.subarray(0, 12);
+      const authTag = buf.subarray(12, 28);
+      const encrypted = buf.subarray(28);
 
-      const decipher = crypto.createDecipher(this.config.algorithm, this.key);
-      decipher.setAAD(Buffer.from("lunarbot", "utf8"));
-      decipher.setAuthTag(tag);
+      const decipher = crypto.createDecipheriv("aes-256-gcm", this.key, iv);
+      decipher.setAuthTag(authTag);
 
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
-      decrypted += decipher.final("utf8");
-
-      return decrypted;
+      return (
+        decipher.update(encrypted).toString("utf8") + decipher.final("utf8")
+      );
     } catch (error) {
       console.error("Decryption error:", error);
       throw new Error("Failed to decrypt data");
     }
+  }
+
+  /** @internal Handles the deprecated format produced by the old createCipher code. */
+  private _decryptLegacy(combined: string): string {
+    const parts = combined.split(":");
+    if (parts.length !== 3)
+      throw new Error("Invalid legacy encrypted data format");
+
+    // The old encrypt() generated a random IV but never actually passed it to
+    // createCipher, meaning every ciphertext shared an implicit zero IV. We can
+    // still decrypt those values because createDecipher also uses no IV argument.
+    const tag = Buffer.from(parts[1], "hex");
+    const encrypted = parts[2];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const decipher = (crypto as any).createDecipher(
+      this.config.algorithm,
+      this.key,
+    );
+    decipher.setAAD(Buffer.from("lunarbot", "utf8"));
+    decipher.setAuthTag(tag);
+
+    let decrypted = decipher.update(encrypted, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
   }
 
   /**
@@ -126,7 +168,7 @@ export class EncryptionService {
     const computedHash = this.hash(data, salt);
     return crypto.timingSafeEqual(
       Buffer.from(computedHash, "hex"),
-      Buffer.from(hash, "hex")
+      Buffer.from(hash, "hex"),
     );
   }
 }
@@ -176,7 +218,7 @@ export function hashPassword(password: string): { hash: string; salt: string } {
 export function verifyPassword(
   password: string,
   hash: string,
-  salt: string
+  salt: string,
 ): boolean {
   const encryptionService = getEncryptionService();
   return encryptionService.verifyHash(password, hash, salt);
@@ -187,7 +229,7 @@ export function verifyPassword(
  */
 export function encryptCredentials(
   username: string,
-  password: string
+  password: string,
 ): {
   encryptedUsername: string;
   encryptedPassword: string;
@@ -204,7 +246,7 @@ export function encryptCredentials(
  */
 export function decryptCredentials(
   encryptedUsername: string,
-  encryptedPassword: string
+  encryptedPassword: string,
 ): { username: string; password: string } {
   const encryptionService = getEncryptionService();
   return {
