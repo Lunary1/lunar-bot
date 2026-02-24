@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ProductScraper } from "@/workers/ProductScraper";
-import { supabase } from "@/app/lib/supabaseServer";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabaseServer();
     const { productId, url, storeId } = await request.json();
 
     if (!productId || !url || !storeId) {
@@ -81,6 +82,7 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabaseServer();
     const { searchParams } = new URL(request.url);
     const productId = searchParams.get("productId");
 

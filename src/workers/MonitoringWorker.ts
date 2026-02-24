@@ -1,6 +1,6 @@
 import { Worker, Job } from "bullmq";
 import { DreamlandBot } from "../bots/dreamland/DreamlandBot";
-import { supabase } from "../app/lib/supabaseServer";
+import { getSupabaseServer } from "../app/lib/supabaseServer";
 import { QUEUE_NAMES } from "../lib/queues";
 
 export interface MonitoringTaskData {
@@ -177,6 +177,7 @@ export class MonitoringWorker {
    * Get product details from database
    */
   private async getProductDetails(productId: string): Promise<any> {
+    const supabase = getSupabaseServer();
     const { data, error } = await supabase
       .from("products")
       .select("*")
@@ -195,6 +196,7 @@ export class MonitoringWorker {
    * Create bot instance for store
    */
   private async createBotForStore(storeId: string): Promise<any> {
+    const supabase = getSupabaseServer();
     // Get store details
     const { data: store } = await supabase
       .from("stores")
@@ -233,6 +235,7 @@ export class MonitoringWorker {
     productId: string,
     updates: any
   ): Promise<void> {
+    const supabase = getSupabaseServer();
     const { error } = await supabase
       .from("products")
       .update(updates)
@@ -274,6 +277,7 @@ export class MonitoringWorker {
    * Mark watchlist item as purchased
    */
   private async markAsPurchased(watchlistItemId: string): Promise<void> {
+    const supabase = getSupabaseServer();
     const { error } = await supabase
       .from("user_watchlists")
       .update({
@@ -295,6 +299,7 @@ export class MonitoringWorker {
     product: any,
     message: string
   ): Promise<void> {
+    const supabase = getSupabaseServer();
     // This would integrate with notification system
     console.log(`Alert for user ${userId}: ${message} - ${product.name}`);
 

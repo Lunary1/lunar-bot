@@ -1,17 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/lib/supabaseServer";
-import { createClient } from "@supabase/supabase-js";
+import { createRouteClient } from "@/app/lib/supabaseServer";
 
 export async function POST(request: NextRequest) {
   try {
     const { watchlistId, autoPurchase, maxPrice, quantity } =
       await request.json();
 
+    const supabase = await createRouteClient();
+
     if (!watchlistId) {
       return NextResponse.json(
         { error: "Watchlist ID is required" },
         { status: 400 }
       );
+    }
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Update watchlist item with auto-purchase settings
@@ -24,6 +34,7 @@ export async function POST(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", watchlistId)
+      .eq("user_id", user.id)
       .select()
       .single();
 
@@ -51,14 +62,15 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
+    const supabase = await createRouteClient();
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "User ID is required" },
-        { status: 400 }
-      );
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // Get user's watchlist items with auto-purchase enabled
@@ -78,7 +90,7 @@ export async function GET(request: NextRequest) {
         )
       `
       )
-      .eq("user_id", userId)
+      .eq("user_id", user.id)
       .eq("auto_purchase", true)
       .eq("status", "monitoring");
 

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/lib/supabaseServer";
-import { cookies } from "next/headers";
+import { createRouteClient } from "@/app/lib/supabaseServer";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,8 +12,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const supabase = await createRouteClient();
+
     // Get user from session
-    const cookieStore = cookies();
     const {
       data: { user },
       error: authError,

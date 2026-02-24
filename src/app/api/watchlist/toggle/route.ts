@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/lib/supabaseServer";
+import { createRouteClient } from "@/app/lib/supabaseServer";
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = await createRouteClient();
     const { itemId, enabled } = await request.json();
 
     if (!itemId || typeof enabled !== "boolean") {

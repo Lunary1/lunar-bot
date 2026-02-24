@@ -1,5 +1,5 @@
 import { Queue } from "bullmq";
-import { supabase } from "../app/lib/supabaseServer";
+import { getSupabaseServer } from "../app/lib/supabaseServer";
 import { QUEUE_NAMES } from "../lib/queues";
 
 export class MonitoringService {
@@ -18,6 +18,7 @@ export class MonitoringService {
     watchlistItemId: string
   ): Promise<{ success: boolean; message: string }> {
     try {
+      const supabase = getSupabaseServer();
       // Get watchlist item details
       const { data: watchlistItem, error } = await supabase
         .from("user_watchlists")
@@ -112,6 +113,7 @@ export class MonitoringService {
     message: string;
   }> {
     try {
+      const supabase = getSupabaseServer();
       // Get all active watchlist items
       const { data: watchlistItems, error } = await supabase
         .from("user_watchlists")
