@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
 import axios from "axios";
 import * as cheerio from "cheerio";
 
@@ -306,7 +306,7 @@ export async function POST(request: NextRequest) {
     if (!url || !storeId) {
       return NextResponse.json(
         { error: "URL and store ID are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -316,15 +316,12 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json(
         { error: "Invalid URL format" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     // Create Supabase client
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabase = getSupabaseServer();
 
     // Verify store exists
     const { data: store, error: storeError } = await supabase
@@ -354,7 +351,7 @@ export async function POST(request: NextRequest) {
     console.error("Error in product scraping API:", error);
     return NextResponse.json(
       { error: "Failed to scrape product details" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

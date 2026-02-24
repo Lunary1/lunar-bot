@@ -1,18 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
 
 // GET - Get single product
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     const { id } = params;
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const supabase = getSupabaseServer();
 
     const { data: product, error } = await supabase
       .from("products")
@@ -24,7 +21,7 @@ export async function GET(
           name,
           base_url
         )
-      `
+      `,
       )
       .eq("id", id)
       .single();
@@ -38,7 +35,7 @@ export async function GET(
     console.error("Error fetching product:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -46,7 +43,7 @@ export async function GET(
 // PUT - Update product
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     const { id } = params;
@@ -56,14 +53,11 @@ export async function PUT(
     if (!name || !url) {
       return NextResponse.json(
         { error: "Name and URL are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const supabase = getSupabaseServer();
 
     const { data: updatedProduct, error } = await supabase
       .from("products")
@@ -85,7 +79,7 @@ export async function PUT(
           name,
           base_url
         )
-      `
+      `,
       )
       .single();
 
@@ -93,7 +87,7 @@ export async function PUT(
       console.error("Error updating product:", error);
       return NextResponse.json(
         { error: "Failed to update product" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -105,7 +99,7 @@ export async function PUT(
     console.error("Error updating product:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -113,15 +107,12 @@ export async function PUT(
 // DELETE - Delete product
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     const { id } = params;
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const supabase = getSupabaseServer();
 
     const { error } = await supabase.from("products").delete().eq("id", id);
 
@@ -129,7 +120,7 @@ export async function DELETE(
       console.error("Error deleting product:", error);
       return NextResponse.json(
         { error: "Failed to delete product" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -141,7 +132,7 @@ export async function DELETE(
     console.error("Error deleting product:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

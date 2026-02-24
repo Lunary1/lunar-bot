@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/lib/supabaseClient";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
 import { TaskExecutor } from "@/workers/TaskExecutor";
 import IORedis from "ioredis";
+
+const supabase = getSupabaseServer();
 
 // Initialize Redis connection
 const redis = new IORedis(process.env.REDIS_URL || "redis://localhost:6379");
@@ -18,7 +20,7 @@ const getTaskExecutor = () => {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     const taskId = params.id;
@@ -26,7 +28,7 @@ export async function POST(
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -38,7 +40,7 @@ export async function POST(
         *,
         product:products(*),
         store_account:user_store_accounts(*)
-      `
+      `,
       )
       .eq("id", taskId)
       .single();
@@ -51,7 +53,7 @@ export async function POST(
     if (task.status === "running") {
       return NextResponse.json(
         { error: "Task is already running" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -90,12 +92,7 @@ export async function POST(
     console.error("Error starting task:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-
-
-
-
-

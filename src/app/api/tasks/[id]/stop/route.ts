@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/lib/supabaseClient";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
+
+const supabase = getSupabaseServer();
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     const taskId = params.id;
@@ -11,7 +13,7 @@ export async function POST(
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -27,7 +29,7 @@ export async function POST(
     if (error) {
       return NextResponse.json(
         { error: "Failed to stop task" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -40,12 +42,7 @@ export async function POST(
     console.error("Error stopping task:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-
-
-
-
-

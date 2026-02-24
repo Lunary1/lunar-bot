@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/lib/supabaseClient";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
+
+const supabase = getSupabaseServer();
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     const taskId = params.id;
@@ -11,7 +13,7 @@ export async function DELETE(
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -24,7 +26,7 @@ export async function DELETE(
     if (error) {
       return NextResponse.json(
         { error: "Failed to delete task" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -37,14 +39,14 @@ export async function DELETE(
     console.error("Error deleting task:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     const taskId = params.id;
@@ -52,7 +54,7 @@ export async function GET(
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -65,7 +67,7 @@ export async function GET(
         product:products(*),
         store_account:user_store_accounts(*),
         proxy:proxies(*)
-      `
+      `,
       )
       .eq("id", taskId)
       .single();
@@ -82,12 +84,7 @@ export async function GET(
     console.error("Error getting task:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
-
-
-
-
-

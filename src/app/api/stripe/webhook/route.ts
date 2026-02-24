@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyWebhookSignature } from "@/lib/stripe";
-import { supabase } from "@/app/lib/supabaseClient";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
 import Stripe from "stripe";
+
+const supabase = getSupabaseServer();
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,7 +13,7 @@ export async function POST(request: NextRequest) {
     if (!signature) {
       return NextResponse.json(
         { error: "Missing stripe signature" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -22,25 +24,25 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case "checkout.session.completed":
         await handleCheckoutSessionCompleted(
-          event.data.object as Stripe.Checkout.Session
+          event.data.object as Stripe.Checkout.Session,
         );
         break;
 
       case "customer.subscription.created":
         await handleSubscriptionCreated(
-          event.data.object as Stripe.Subscription
+          event.data.object as Stripe.Subscription,
         );
         break;
 
       case "customer.subscription.updated":
         await handleSubscriptionUpdated(
-          event.data.object as Stripe.Subscription
+          event.data.object as Stripe.Subscription,
         );
         break;
 
       case "customer.subscription.deleted":
         await handleSubscriptionDeleted(
-          event.data.object as Stripe.Subscription
+          event.data.object as Stripe.Subscription,
         );
         break;
 
@@ -61,13 +63,13 @@ export async function POST(request: NextRequest) {
     console.error("Webhook error:", error);
     return NextResponse.json(
       { error: "Webhook handler failed" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }
 
 async function handleCheckoutSessionCompleted(
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
 ) {
   const userId = session.metadata?.userId;
   const planId = session.metadata?.planId;

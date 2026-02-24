@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/lib/supabaseClient";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
 import { TaskExecutor } from "@/workers/TaskExecutor";
 import IORedis from "ioredis";
+
+const supabase = getSupabaseServer();
 
 // Initialize Redis connection
 const redis = new IORedis(process.env.REDIS_URL || "redis://localhost:6379");
@@ -31,7 +33,7 @@ export async function POST(request: NextRequest) {
       if (!taskData[field]) {
         return NextResponse.json(
           { error: `${field} is required` },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
     if (taskError || !task) {
       return NextResponse.json(
         { error: "Failed to create task" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -77,7 +79,7 @@ export async function POST(request: NextRequest) {
     } catch (queueError) {
       console.warn(
         "Task queue not available, task created but not queued:",
-        queueError
+        queueError,
       );
     }
 
@@ -90,7 +92,7 @@ export async function POST(request: NextRequest) {
     console.error("Error creating task:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -103,7 +105,7 @@ export async function GET(request: NextRequest) {
     if (!taskId) {
       return NextResponse.json(
         { error: "Task ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -129,7 +131,7 @@ export async function GET(request: NextRequest) {
     console.error("Error getting task status:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

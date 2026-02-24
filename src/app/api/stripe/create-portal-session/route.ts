@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createPortalSession } from "@/lib/stripe";
-import { supabase } from "@/app/lib/supabaseClient";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
+
+const supabase = getSupabaseServer();
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,14 +22,14 @@ export async function POST(request: NextRequest) {
     if (profileError || !profile?.stripe_customer_id) {
       return NextResponse.json(
         { error: "No Stripe customer found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     // Create portal session
     const session = await createPortalSession(
       profile.stripe_customer_id,
-      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`
+      `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`,
     );
 
     return NextResponse.json({ url: session.url });
@@ -35,7 +37,7 @@ export async function POST(request: NextRequest) {
     console.error("Error creating portal session:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

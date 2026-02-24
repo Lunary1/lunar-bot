@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createCheckoutSession, createStripeCustomer } from "@/lib/stripe";
-import { supabase } from "@/app/lib/supabaseClient";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
+
+const supabase = getSupabaseServer();
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,7 +11,7 @@ export async function POST(request: NextRequest) {
     if (!planId || !userId) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
     } else {
       const customer = await createStripeCustomer(
         user.user.email!,
-        user.user.user_metadata?.full_name
+        user.user.user_metadata?.full_name,
       );
       customerId = customer.id;
 
@@ -65,7 +67,7 @@ export async function POST(request: NextRequest) {
         userId,
         planId,
         planName: plan.name,
-      }
+      },
     );
 
     return NextResponse.json({ sessionId: session.id });
@@ -73,7 +75,7 @@ export async function POST(request: NextRequest) {
     console.error("Error creating checkout session:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

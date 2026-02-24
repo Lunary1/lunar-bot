@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { getSupabaseServer } from "@/app/lib/supabaseServer";
 
 // GET - List all products with pagination
 export async function GET(request: NextRequest) {
@@ -10,10 +10,7 @@ export async function GET(request: NextRequest) {
     const storeId = searchParams.get("store_id");
     const search = searchParams.get("search");
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabase = getSupabaseServer();
 
     let query = supabase
       .from("products")
@@ -25,7 +22,7 @@ export async function GET(request: NextRequest) {
           name,
           base_url
         )
-      `
+      `,
       )
       .order("created_at", { ascending: false });
 
@@ -52,7 +49,7 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching products:", error);
       return NextResponse.json(
         { error: "Failed to fetch products" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -69,7 +66,7 @@ export async function GET(request: NextRequest) {
     console.error("Error in products API:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -84,14 +81,11 @@ export async function POST(request: NextRequest) {
     if (!name || !url || !store_id) {
       return NextResponse.json(
         { error: "Name, URL, and store ID are required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    const supabase = getSupabaseServer();
 
     // Check if product already exists with this URL
     const { data: existingProduct } = await supabase
@@ -103,7 +97,7 @@ export async function POST(request: NextRequest) {
     if (existingProduct) {
       return NextResponse.json(
         { error: "Product with this URL already exists" },
-        { status: 409 }
+        { status: 409 },
       );
     }
 
@@ -128,7 +122,7 @@ export async function POST(request: NextRequest) {
           name,
           base_url
         )
-      `
+      `,
       )
       .single();
 
@@ -136,7 +130,7 @@ export async function POST(request: NextRequest) {
       console.error("Error creating product:", error);
       return NextResponse.json(
         { error: "Failed to create product" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -145,13 +139,13 @@ export async function POST(request: NextRequest) {
         success: true,
         product: newProduct,
       },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error) {
     console.error("Error in products API:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
