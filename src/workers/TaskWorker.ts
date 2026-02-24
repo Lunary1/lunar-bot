@@ -1,6 +1,6 @@
 import { Worker, Job } from "bullmq";
 import { BotManager, BotInstance } from "../bots/BotManager";
-import { supabase } from "../app/lib/supabaseClient";
+import { getSupabaseServer } from "../app/lib/supabaseServer";
 import { decryptSensitiveData } from "../lib/encryption";
 import { StoreBot } from "../bots/base/StoreBot";
 import { QUEUE_NAMES } from "../lib/queues";
@@ -255,8 +255,23 @@ export class TaskWorker {
     proxy?: any,
   ): Promise<BotInstance | null> {
     try {
+      const supabase = getSupabaseServer();
+
+      // Resolve the store name from the UUID — BotManager routes on name, not ID
+      const { data: store, error: storeErr } = await supabase
+        .from("stores")
+        .select("name")
+        .eq("id", storeId)
+        .single();
+
+      if (storeErr || !store) {
+        throw new Error(`Store not found for id: ${storeId}`);
+      }
+
+      const storeName = store.name.toLowerCase();
+
       // Check if we already have an available bot for this store
-      const existingBots = this.botManager.getBotsByType(storeId);
+      const existingBots = this.botManager.getBotsByType(storeName);
       const availableBot = existingBots.find((bot) => bot.status === "idle");
 
       if (availableBot) {
@@ -272,11 +287,12 @@ export class TaskWorker {
       };
 
       const result = await this.botManager.createBot(
-        storeId as any,
+        storeName as any,
         botConfig,
         proxy,
       );
       if (!result.success || !result.botId) {
+        console.error(`Failed to create bot for store "${storeName}": ${result.error}`);
         return null;
       }
 
@@ -291,6 +307,7 @@ export class TaskWorker {
    * Get task details from database
    */
   private async getTaskDetails(taskId: string): Promise<any> {
+    const supabase = getSupabaseServer();
     const { data, error } = await supabase
       .from("purchase_tasks")
       .select(
@@ -315,6 +332,7 @@ export class TaskWorker {
    * Get store account details
    */
   private async getStoreAccount(storeAccountId: string): Promise<any> {
+    const supabase = getSupabaseServer();
     const { data, error } = await supabase
       .from("user_store_accounts")
       .select("*")
@@ -333,6 +351,7 @@ export class TaskWorker {
    * Get proxy details
    */
   private async getProxy(proxyId: string): Promise<any> {
+    const supabase = getSupabaseServer();
     const { data, error } = await supabase
       .from("proxies")
       .select("*")
@@ -356,6 +375,7 @@ export class TaskWorker {
     message?: string,
   ): Promise<void> {
     try {
+      const supabase = getSupabaseServer();
       const updateData: any = {
         status,
         updated_at: new Date().toISOString(),

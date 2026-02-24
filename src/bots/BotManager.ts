@@ -1,11 +1,12 @@
 import { StoreBot } from "./base/StoreBot";
 import { DreamlandBot } from "./dreamland/DreamlandBot";
+import { BolComBot } from "./bol-com/BolComBot";
 import { BotResult } from "./base/StoreBot";
 
 export interface BotInstance {
   id: string;
   name: string;
-  type: "dreamland" | "mediamarkt" | "fnac" | "bol";
+  type: string;
   bot: StoreBot;
   status: "idle" | "running" | "error" | "stopped";
   lastActivity: Date | null;
@@ -31,7 +32,7 @@ export class BotManager {
    * Create a new bot instance
    */
   async createBot(
-    type: "dreamland" | "mediamarkt" | "fnac" | "bol",
+    type: string,
     config: any,
     proxy?: any
   ): Promise<{ success: boolean; botId?: string; error?: string }> {
@@ -50,9 +51,10 @@ export class BotManager {
         case "fnac":
           // TODO: Implement FnacBot
           throw new Error("Fnac bot not implemented yet");
+        case "bol.com":
         case "bol":
-          // TODO: Implement BolBot
-          throw new Error("Bol bot not implemented yet");
+          bot = new BolComBot(config, proxy);
+          break;
         default:
           throw new Error(`Unknown bot type: ${type}`);
       }
