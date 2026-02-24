@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Plus, User } from "lucide-react";
+import ProtectedRoute from "@/components/protected-route";
 
-export default function AccountsPage() {
+function AccountsPageContent() {
   const { user } = useAuthContext();
   const [storeAccounts, setStoreAccounts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,5 +102,13 @@ export default function AccountsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AccountsPage() {
+  return (
+    <ProtectedRoute>
+      <AccountsPageContent />
+    </ProtectedRoute>
   );
 }

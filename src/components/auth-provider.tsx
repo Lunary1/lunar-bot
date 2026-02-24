@@ -2,33 +2,27 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth, AuthState, UserProfile } from "@/hooks/useAuth";
+import { User } from "@supabase/supabase-js";
 
-interface AuthContextType {
-  user: any;
-  profile: any;
-  loading: boolean;
+interface AuthContextType extends AuthState {
+  signInWithGoogle: () => Promise<void>;
+  signInWithGitHub: () => Promise<void>;
+  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   hasPermission: (tier: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading, hasPermission } = useAuth();
-  const router = useRouter();
+  const auth = useAuth();
 
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (!loading && !user) {
-      router.push("/login");
-    }
-  }, [user, loading, router]);
-
-  return (
-    <AuthContext.Provider value={{ user, profile, loading, hasPermission }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  // Simple provider - no global redirects
+  // Let each page handle its own auth requirements
+  return <AuthContext.Provider value={auth}>{children}</AuthContext.Provider>;
 }
 
 export function useAuthContext() {
@@ -38,4 +32,3 @@ export function useAuthContext() {
   }
   return context;
 }
-

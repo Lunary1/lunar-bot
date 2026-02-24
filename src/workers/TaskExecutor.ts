@@ -1,7 +1,10 @@
 import { Queue, Worker, Job } from "bullmq";
 import { supabase } from "@/app/lib/supabaseClient";
+import { decryptSensitiveData } from "@/lib/encryption";
 import { StoreBot } from "@/bots/base/StoreBot";
 import { DreamlandBot } from "@/bots/dreamland/DreamlandBot";
+import { PokemonCenterBot } from "@/bots/pokemon-center/PokemonCenterBot";
+import { BolComBot } from "@/bots/bol-com/BolComBot";
 import { ProductScraper } from "./ProductScraper";
 
 interface TaskJobData {
@@ -239,7 +242,32 @@ export class TaskExecutor {
           );
           break;
 
-        // Add more store bots here
+        case "pokemon-center-eu":
+        case "pokemon-center":
+          bot = new PokemonCenterBot(
+            {
+              headless: true,
+              timeout: 30000,
+              retryAttempts: 3,
+              delayBetweenActions: 2000,
+            },
+            proxyDetails
+          );
+          break;
+
+        case "bol-com":
+        case "bol.com":
+          bot = new BolComBot(
+            {
+              headless: true,
+              timeout: 30000,
+              retryAttempts: 3,
+              delayBetweenActions: 2000,
+            },
+            proxyDetails
+          );
+          break;
+
         default:
           throw new Error(`Unsupported store: ${storeName}`);
       }
@@ -251,9 +279,21 @@ export class TaskExecutor {
       }
 
       // Login to store account
+      // Decrypt stored password before use — passwords are stored encrypted at rest
+      let plaintextPassword: string;
+      try {
+        plaintextPassword = decryptSensitiveData(accountDetails.password_encrypted);
+      } catch (decryptErr) {
+        throw new Error(
+          `Failed to decrypt store account credentials for account ${accountDetails.id}. ` +
+          `Ensure ENCRYPTION_KEY env var matches the key used when the account was saved. ` +
+          `Original error: ${decryptErr instanceof Error ? decryptErr.message : String(decryptErr)}`
+        );
+      }
+
       const loginResult = await bot.login(
         accountDetails.username,
-        accountDetails.password_encrypted // You'll need to decrypt this
+        plaintextPassword
       );
 
       if (!loginResult.success) {

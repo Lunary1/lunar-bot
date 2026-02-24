@@ -1,100 +1,132 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/app/lib/supabaseClient";
+import { ProductScraper } from "@/workers/ProductScraper";
+import { supabase } from "@/app/lib/supabaseServer";
 
 export async function POST(request: NextRequest) {
   try {
-    const { url } = await request.json();
+    const { productId, url, storeId } = await request.json();
 
-    if (!url) {
-      return NextResponse.json({ error: "URL is required" }, { status: 400 });
+    if (!productId || !url || !storeId) {
+      return NextResponse.json(
+        { error: "Product ID, URL, and Store ID are required" },
+        { status: 400 }
+      );
     }
 
-    // Extract domain from URL to determine store
-    const urlObj = new URL(url);
-    const domain = urlObj.hostname;
+    // Initialize scraper
+    const scraper = new ProductScraper();
 
-    // Find matching store
-    const { data: stores, error: storeError } = await supabase
-      .from("stores")
-      .select("*")
-      .eq("is_active", true);
+    try {
+      // Scrape product data
+      const productData = await scraper.scrapeProductData(url, storeId);
 
-    if (storeError) {
-      throw new Error(`Failed to fetch stores: ${storeError.message}`);
-    }
-
-    // If no stores exist, create a default store for the domain
-    let matchingStore = stores?.find(
-      (store) =>
-        store.domain &&
-        (domain.includes(store.domain) || store.domain.includes(domain))
-    );
-
-    if (!matchingStore) {
-      // Create a default store for this domain
-      const { data: newStore, error: storeCreateError } = await supabase
-        .from("stores")
-        .insert({
-          name: domain.charAt(0).toUpperCase() + domain.slice(1),
-          domain: domain,
-          is_active: true,
-          logo_url: null,
-        })
-        .select()
-        .single();
-
-      if (storeCreateError) {
-        throw new Error(`Failed to create store: ${storeCreateError.message}`);
+      if (!productData) {
+        return NextResponse.json(
+          { error: "Failed to scrape product data" },
+          { status: 500 }
+        );
       }
 
-      matchingStore = newStore;
+      // Update product in database
+      const { error: updateError } = await supabase
+        .from("products")
+        .update({
+          name: productData.name,
+          current_price: productData.current_price,
+          is_available: productData.is_available,
+          image_url: productData.image_url,
+          description: productData.description,
+          sku: productData.sku,
+          last_updated: productData.last_updated,
+          error_message: null,
+        })
+        .eq("id", productId);
+
+      if (updateError) {
+        console.error("Error updating product:", updateError);
+        return NextResponse.json(
+          { error: "Failed to update product in database" },
+          { status: 500 }
+        );
+      }
+
+      // Create price history entry
+      if (productData.current_price > 0) {
+        await supabase.from("price_history").insert({
+          product_id: productId,
+          price: productData.current_price,
+          date: new Date().toISOString(),
+        });
+      }
+
+      await scraper.close();
+
+      return NextResponse.json({
+        success: true,
+        message: "Product scraped successfully",
+        data: productData,
+      });
+    } catch (scrapeError) {
+      await scraper.close();
+      throw scrapeError;
+    }
+  } catch (error) {
+    console.error("Product scraping error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const productId = searchParams.get("productId");
+
+    if (!productId) {
+      return NextResponse.json(
+        { error: "Product ID is required" },
+        { status: 400 }
+      );
     }
 
-    // For now, create a basic product entry
-    // In production, this would integrate with actual scraping services
-    const productData = {
-      name: `Product from ${matchingStore.name}`,
-      url: url,
-      current_price: 0, // Will be updated by scraping
-      is_available: true,
-      store_id: matchingStore.id,
-      last_updated: new Date().toISOString(),
-      // Add metadata that would be scraped
-      metadata: {
-        scraped_at: new Date().toISOString(),
-        source_url: url,
-        store_domain: domain,
-      },
-    };
-
-    const { data: product, error: productError } = await supabase
+    // Get product details
+    const { data: product, error } = await supabase
       .from("products")
-      .insert(productData)
       .select(
         `
         *,
-        store:stores(id, name, domain, logo_url)
+        store:stores(id, name, domain),
+        price_history:price_history(
+          price,
+          date
+        )
       `
       )
+      .eq("id", productId)
       .single();
 
-    if (productError) {
-      throw new Error(`Failed to create product: ${productError.message}`);
+    if (error) {
+      console.error("Error fetching product:", error);
+      return NextResponse.json(
+        { error: "Failed to fetch product" },
+        { status: 500 }
+      );
     }
 
-    // For now, skip the scraping job queue and just return the product
-    // In production, this would queue a background scraping job
-    console.log(`Product created: ${product.name} from ${matchingStore.name}`);
+    if (!product) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 });
+    }
 
     return NextResponse.json({
       success: true,
-      product: product,
-      message: "Product added successfully. Scraping in progress...",
+      data: product,
     });
   } catch (error) {
-    console.error("Error in product scraping API:", error);
+    console.error("Get product error:", error);
     return NextResponse.json(
-      { error: "Failed to scrape product" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }

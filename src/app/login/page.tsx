@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,23 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  // Ensure component only renders on client to avoid hydration issues
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  if (!isClient) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="text-gray-600 mt-2">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleEmailAuth = async () => {
     setLoading(true);
@@ -143,6 +160,8 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
+              autoComplete="email"
+              data-hydration-ignore
             />
             <Input
               placeholder="Password"
@@ -150,6 +169,8 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
+              autoComplete={isSignUp ? "new-password" : "current-password"}
+              data-hydration-ignore
             />
           </div>
 

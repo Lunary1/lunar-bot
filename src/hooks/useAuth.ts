@@ -8,7 +8,13 @@ export interface UserProfile {
   id: string;
   user_id: string;
   subscription_tier: "free" | "basic" | "premium" | "enterprise";
+  role?: "user" | "admin" | "moderator";
   credits_remaining: number;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  subscription_status?: string;
+  subscription_start_date?: string;
+  subscription_end_date?: string;
   created_at: string;
   updated_at: string;
 }
@@ -29,24 +35,45 @@ export const useAuth = () => {
   });
 
   useEffect(() => {
+    let mounted = true;
+
     // Get initial session
     const getInitialSession = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session?.user) {
-        await fetchUserProfile(session.user.id);
-      } else {
-        setAuthState((prev) => ({ ...prev, loading: false }));
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!mounted) return;
+
+        if (session?.user) {
+          await fetchUserProfile(session.user.id);
+        } else {
+          setAuthState((prev) => ({ ...prev, loading: false }));
+        }
+      } catch (error) {
+        console.error("Error getting initial session:", error);
+        if (mounted) {
+          setAuthState((prev) => ({ ...prev, loading: false }));
+        }
       }
     };
 
     getInitialSession();
 
+    // Timeout to prevent infinite loading
+    const timeout = setTimeout(() => {
+      if (mounted) {
+        setAuthState((prev) => ({ ...prev, loading: false }));
+      }
+    }, 10000); // 10 second timeout
+
     // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+
       if (session?.user) {
         await fetchUserProfile(session.user.id);
       } else {
@@ -59,25 +86,67 @@ export const useAuth = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchUserProfile = async (userId: string) => {
     try {
-      const { data: profile, error } = await supabase
+      let profile;
+      const { data: profileData, error } = await supabase
         .from("user_profiles")
         .select("*")
         .eq("user_id", userId)
         .single();
 
       if (error) {
-        console.error("Error fetching user profile:", error);
-        return;
+        // If profile doesn't exist, create one
+        if (error.code === "PGRST116") {
+          // No rows returned
+          const { data: newProfile, error: createError } = await supabase
+            .from("user_profiles")
+            .insert({
+              user_id: userId,
+              subscription_tier: "free",
+              role: "user",
+              credits_remaining: 5,
+              subscription_status: "active",
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error("Error creating user profile:", createError);
+            setAuthState((prev) => ({ ...prev, loading: false }));
+            return;
+          }
+
+          profile = newProfile;
+        } else {
+          console.error(
+            "Profile fetch error:",
+            error.code,
+            error.message,
+            error.details,
+            error.hint,
+          );
+          setAuthState((prev) => ({ ...prev, loading: false }));
+          return;
+        }
+      } else {
+        profile = profileData;
       }
 
       const {
-        data: { user, session },
+        data: { user },
       } = await supabase.auth.getUser();
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       setAuthState({
         user,
@@ -151,7 +220,7 @@ export const useAuth = () => {
 
     const tierHierarchy = ["free", "basic", "premium", "enterprise"];
     const userTierIndex = tierHierarchy.indexOf(
-      authState.profile.subscription_tier
+      authState.profile.subscription_tier,
     );
     const requiredTierIndex = tierHierarchy.indexOf(requiredTier);
 
@@ -169,4 +238,3 @@ export const useAuth = () => {
     hasPermission,
   };
 };
-

@@ -1,6 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { BotManager, BotInstance } from "../bots/BotManager";
 import { supabase } from "../app/lib/supabaseClient";
+import { decryptSensitiveData } from "../lib/encryption";
 import { StoreBot } from "../bots/base/StoreBot";
 
 export interface TaskData {
@@ -134,9 +135,21 @@ export class TaskWorker {
       const bot = botInstance.bot;
 
       // Login to store account
+      // Decrypt stored password before use — passwords are stored encrypted at rest
+      let plaintextPassword: string;
+      try {
+        plaintextPassword = decryptSensitiveData(storeAccount.password_encrypted);
+      } catch (decryptErr) {
+        return {
+          success: false,
+          message: "Failed to decrypt store account credentials. Ensure ENCRYPTION_KEY matches the key used when the account was saved.",
+          error: decryptErr instanceof Error ? decryptErr.message : String(decryptErr),
+        };
+      }
+
       const loginResult = await bot.login(
         storeAccount.username,
-        storeAccount.password_encrypted
+        plaintextPassword
       );
       if (!loginResult.success) {
         return {

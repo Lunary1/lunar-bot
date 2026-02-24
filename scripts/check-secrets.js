@@ -33,7 +33,8 @@ const FORBIDDEN_PATTERNS = [
   {
     name: "Generic API secret (assignment)",
     // e.g.  apiKey = "sk-abc123..."  but NOT in .example files
-    regex: /(?:api_?key|secret_?key|access_?token)\s*=\s*["'][a-zA-Z0-9_\-]{20,}["']/i,
+    regex:
+      /(?:api_?key|secret_?key|access_?token)\s*=\s*["'][a-zA-Z0-9_\-]{20,}["']/i,
   },
 ];
 
@@ -135,8 +136,12 @@ function scan() {
     console.error("");
   }
 
-  console.error("Fix: Move credentials to .env.local and reference via process.env.");
-  console.error("     Never commit real keys — env.example must use placeholder values only.\n");
+  console.error(
+    "Fix: Move credentials to .env.local and reference via process.env.",
+  );
+  console.error(
+    "     Never commit real keys — env.example must use placeholder values only.\n",
+  );
 
   process.exit(1);
 }

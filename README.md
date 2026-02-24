@@ -9,24 +9,28 @@ This platform provides automated purchasing capabilities for Pokémon products a
 ## ✨ Features
 
 ### 🔍 **Stock Monitoring**
+
 - Real-time product monitoring across multiple stores
 - Automatic stock change detection
 - Price drop alerts and notifications
 - Batch processing for efficient monitoring
 
 ### 🛒 **Automated Purchasing**
+
 - Instant auto-purchase when items come in stock
 - User-defined price limits and preferences
 - Multiple store account support
 - Proxy rotation for anti-detection
 
 ### 👥 **User Management**
+
 - Secure authentication with Supabase Auth
 - Subscription tiers (Free, Basic, Premium, Enterprise)
 - Encrypted credential storage
 - Real-time dashboard with task monitoring
 
 ### 🏪 **Supported Stores**
+
 - ToyChamp
 - Pokémon Center EU
 - Bol.com
@@ -39,18 +43,21 @@ This platform provides automated purchasing capabilities for Pokémon products a
 ## 🏗️ Technical Architecture
 
 ### **Frontend**
+
 - **Framework**: Next.js 14 (App Router)
 - **Styling**: Tailwind CSS + ShadCN/UI
 - **State Management**: React Query / Tanstack Query
 - **Animations**: Framer Motion
 
 ### **Backend**
+
 - **API**: Next.js API Routes
 - **Database**: Supabase (PostgreSQL)
 - **Authentication**: Supabase Auth
 - **Payments**: Stripe integration
 
 ### **Automation**
+
 - **Browser Automation**: Playwright
 - **Queue System**: BullMQ + Redis
 - **Workers**: Isolated Node.js processes
@@ -59,7 +66,8 @@ This platform provides automated purchasing capabilities for Pokémon products a
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
+
+- Node.js 18+
 - Redis server
 - Supabase account
 - Stripe account (for payments)
@@ -67,22 +75,26 @@ This platform provides automated purchasing capabilities for Pokémon products a
 ### Installation
 
 1. **Clone the repository**
+
 ```bash
 git clone https://github.com/yourusername/pokemon-saas-shopping-bot.git
 cd pokemon-saas-shopping-bot
 ```
 
 2. **Install dependencies**
+
 ```bash
 npm install
 ```
 
 3. **Set up environment variables**
+
 ```bash
 cp .env.example .env.local
 ```
 
 Fill in your environment variables:
+
 ```env
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
@@ -99,12 +111,14 @@ STRIPE_WEBHOOK_SECRET=your_stripe_webhook_secret
 ```
 
 4. **Set up the database**
+
 ```bash
 # Run Supabase migrations
 npx supabase db push
 ```
 
 5. **Start Redis server**
+
 ```bash
 # Using Docker
 docker run -d -p 6379:6379 redis:alpine
@@ -115,6 +129,7 @@ docker run -d -p 6379:6379 redis:alpine
 ```
 
 6. **Start the development servers**
+
 ```bash
 # Terminal 1: Start Next.js
 npm run dev
@@ -143,6 +158,7 @@ npm run worker
 ## 🛠️ Development
 
 ### **Project Structure**
+
 ```
 src/
 ├── app/                 # Next.js App Router pages
@@ -186,12 +202,14 @@ src/
 ## 🚀 Deployment
 
 ### **Frontend (Vercel)**
+
 ```bash
 # Deploy to Vercel
 vercel --prod
 ```
 
 ### **Backend Workers (DigitalOcean/Railway)**
+
 ```bash
 # Build and deploy workers
 npm run build:worker
@@ -199,6 +217,7 @@ npm run build:worker
 ```
 
 ### **Database (Supabase)**
+
 - Production database is managed by Supabase
 - Automatic backups and scaling
 - Real-time subscriptions enabled
@@ -242,4 +261,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Built with ❤️ for the Pokémon community**
 
-*This project is for educational and personal use. Please respect store terms of service and use responsibly.*
+_This project is for educational and personal use. Please respect store terms of service and use responsibly._

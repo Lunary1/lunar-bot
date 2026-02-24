@@ -42,6 +42,7 @@ interface StoreData {
   name: string;
   domain: string;
   is_active: boolean;
+  requires_proxy: boolean;
   logo_url?: string;
 }
 
@@ -59,21 +60,23 @@ interface Product {
 
 interface UserProfile {
   id: string;
-  name: string;
+  profile_name: string;
+  first_name: string;
+  last_name: string;
   email: string;
   phone?: string;
-  billing_address?: {
-    street: string;
-    city: string;
-    postal_code: string;
-    country: string;
-  };
-  shipping_address?: {
-    street: string;
-    city: string;
-    postal_code: string;
-    country: string;
-  };
+  billing_street?: string;
+  billing_city?: string;
+  billing_state?: string;
+  billing_postal_code?: string;
+  billing_country?: string;
+  shipping_street?: string;
+  shipping_city?: string;
+  shipping_state?: string;
+  shipping_postal_code?: string;
+  shipping_country?: string;
+  is_default?: boolean;
+  same_as_billing?: boolean;
 }
 
 interface StoreAccount {
@@ -139,7 +142,7 @@ export function TaskCreationWizard({
   const [proxies, setProxies] = useState<Proxy[]>([]);
 
   // Selection states
-  const [selectedStore, setSelectedStore] = useState<Store | null>(null);
+  const [selectedStore, setSelectedStore] = useState<StoreData | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<UserProfile | null>(
     null
@@ -177,7 +180,21 @@ export function TaskCreationWizard({
     }
   }, [user]);
 
+  // Load products automatically when a store is selected
+  useEffect(() => {
+    if (selectedStore) {
+      setProducts([]); // Clear previous products
+      setSelectedProduct(null); // Clear previous selection
+      loadStoreProducts();
+    } else {
+      setProducts([]);
+      setSelectedProduct(null);
+    }
+  }, [selectedStore]);
+
   const fetchInitialData = async () => {
+    if (!user) return;
+
     setLoading(true);
     try {
       // Fetch stores
@@ -187,17 +204,29 @@ export function TaskCreationWizard({
         .eq("is_active", true)
         .order("name");
 
-      // Fetch user profiles
+      // Fetch shipping profiles
       const { data: profilesData } = await supabase
-        .from("user_profiles")
+        .from("shipping_profiles")
         .select(
           `
           id,
-          name,
+          profile_name,
+          first_name,
+          last_name,
           email,
           phone,
-          billing_address,
-          shipping_address
+          billing_street,
+          billing_city,
+          billing_state,
+          billing_postal_code,
+          billing_country,
+          shipping_street,
+          shipping_city,
+          shipping_state,
+          shipping_postal_code,
+          shipping_country,
+          is_default,
+          same_as_billing
         `
         )
         .eq("user_id", user.id);
@@ -209,7 +238,8 @@ export function TaskCreationWizard({
           `
           id,
           username,
-          store:stores(name)
+          store_id,
+          stores(name)
         `
         )
         .eq("user_id", user.id)
@@ -222,12 +252,65 @@ export function TaskCreationWizard({
         .eq("user_id", user.id)
         .eq("is_active", true);
 
+      // Transform store accounts data
+      const transformedAccounts =
+        accountsData?.map((account) => ({
+          id: account.id,
+          username: account.username,
+          store: {
+            name:
+              Array.isArray(account.stores) && account.stores.length > 0
+                ? account.stores[0].name
+                : "Unknown Store",
+          },
+        })) || [];
+
       setStores(storesData || []);
       setProfiles(profilesData || []);
-      setStoreAccounts(accountsData || []);
+      setStoreAccounts(transformedAccounts);
       setProxies(proxiesData || []);
     } catch (error) {
       console.error("Error fetching initial data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadStoreProducts = async () => {
+    if (!selectedStore) return;
+
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          `
+          id,
+          name,
+          url,
+          current_price,
+          is_available,
+          image_url
+        `
+        )
+        .eq("store_id", selectedStore.id)
+        .eq("is_available", true)
+        .order("name")
+        .limit(20);
+
+      if (error) throw error;
+
+      // Transform the data to match our Product interface
+      const transformedProducts =
+        data?.map((product) => ({
+          ...product,
+          store: { name: selectedStore.name },
+        })) || [];
+
+      setProducts(transformedProducts);
+    } catch (error) {
+      console.error("Error loading store products:", error);
+      setProducts([]);
     } finally {
       setLoading(false);
     }
@@ -247,8 +330,7 @@ export function TaskCreationWizard({
           url,
           current_price,
           is_available,
-          image_url,
-          store:stores(name)
+          image_url
         `
         )
         .ilike("name", `%${searchQuery}%`)
@@ -257,7 +339,15 @@ export function TaskCreationWizard({
         .limit(10);
 
       if (error) throw error;
-      setProducts(data || []);
+
+      // Transform the data to match our Product interface
+      const transformedProducts =
+        data?.map((product) => ({
+          ...product,
+          store: { name: selectedStore.name },
+        })) || [];
+
+      setProducts(transformedProducts);
     } catch (error) {
       console.error("Error searching products:", error);
     } finally {
@@ -335,9 +425,13 @@ export function TaskCreationWizard({
       case 3:
         return selectedProfile !== null;
       case 4:
-        return selectedStoreAccount !== null;
+        // Proxy is optional for most stores, but required for some (like Bol.com)
+        if (selectedStore?.requires_proxy) {
+          return selectedProxy !== null;
+        }
+        return true; // Optional for stores that don't require proxy
       case 5:
-        return true;
+        return selectedStoreAccount !== null; // Store account is required for task configuration
       case 6:
         return true;
       default:
@@ -491,55 +585,74 @@ export function TaskCreationWizard({
                     <div className="text-center py-4">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
                       <p className="text-sm text-gray-500 mt-2">
-                        Searching products...
+                        Loading products from {selectedStore.name}...
                       </p>
                     </div>
                   )}
 
-                  {products.length > 0 && (
-                    <div className="grid gap-3 max-h-60 overflow-y-auto">
-                      {products.map((product) => (
-                        <div
-                          key={product.id}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            selectedProduct?.id === product.id
-                              ? "border-blue-500 bg-blue-50"
-                              : "border-gray-200 hover:border-gray-300"
-                          }`}
-                          onClick={() => setSelectedProduct(product)}
-                        >
-                          <div className="flex items-center gap-3">
-                            {product.image_url && (
-                              <img
-                                src={product.image_url}
-                                alt={product.name}
-                                className="w-12 h-12 object-cover rounded"
-                              />
-                            )}
-                            <div className="flex-1">
-                              <h4 className="font-medium text-sm">
-                                {product.name}
-                              </h4>
-                              <div className="flex items-center gap-2 mt-1">
-                                <span className="text-sm font-medium">
-                                  €{product.current_price}
-                                </span>
-                                <Badge
-                                  variant={
-                                    product.is_available
-                                      ? "default"
-                                      : "secondary"
-                                  }
-                                >
-                                  {product.is_available
-                                    ? "In Stock"
-                                    : "Out of Stock"}
-                                </Badge>
+                  {!loading && products.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-lg font-medium mb-2">
+                        No products found
+                      </p>
+                      <p className="text-sm">
+                        No products available for {selectedStore.name} or try
+                        searching for specific items.
+                      </p>
+                    </div>
+                  )}
+
+                  {!loading && products.length > 0 && (
+                    <div>
+                      <p className="text-sm text-gray-600 mb-3">
+                        {products.length} products available from{" "}
+                        {selectedStore.name}
+                      </p>
+                      <div className="grid gap-3 max-h-60 overflow-y-auto">
+                        {products.map((product) => (
+                          <div
+                            key={product.id}
+                            className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                              selectedProduct?.id === product.id
+                                ? "border-blue-500 bg-blue-50"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                            onClick={() => setSelectedProduct(product)}
+                          >
+                            <div className="flex items-center gap-3">
+                              {product.image_url && (
+                                <img
+                                  src={product.image_url}
+                                  alt={product.name}
+                                  className="w-12 h-12 object-cover rounded"
+                                />
+                              )}
+                              <div className="flex-1">
+                                <h4 className="font-medium text-sm">
+                                  {product.name}
+                                </h4>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span className="text-sm font-medium">
+                                    €{product.current_price}
+                                  </span>
+                                  <Badge
+                                    variant={
+                                      product.is_available
+                                        ? "default"
+                                        : "secondary"
+                                    }
+                                  >
+                                    {product.is_available
+                                      ? "In Stock"
+                                      : "Out of Stock"}
+                                  </Badge>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -605,14 +718,24 @@ export function TaskCreationWizard({
                       >
                         <div className="flex items-center justify-between">
                           <div>
-                            <h4 className="font-medium">{profile.name}</h4>
+                            <h4 className="font-medium">
+                              {profile.profile_name}
+                            </h4>
+                            <p className="text-sm text-gray-500">
+                              {profile.first_name} {profile.last_name}
+                            </p>
                             <p className="text-sm text-gray-500">
                               {profile.email}
                             </p>
                             <p className="text-sm text-gray-500">
-                              {profile.billing_address?.city || "N/A"},{" "}
-                              {profile.billing_address?.country || "N/A"}
+                              {profile.billing_city || "N/A"},{" "}
+                              {profile.billing_country || "N/A"}
                             </p>
+                            {profile.is_default && (
+                              <Badge variant="secondary" className="mt-1">
+                                Default
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -648,32 +771,48 @@ export function TaskCreationWizard({
             <div className="space-y-4">
               <div>
                 <Label className="text-lg font-medium">
-                  Assign Proxy (Optional)
+                  Assign Proxy{" "}
+                  {selectedStore?.requires_proxy ? "(Required)" : "(Optional)"}
                 </Label>
                 <p className="text-sm text-gray-600 mb-4">
-                  Select a proxy to use for this task, or skip to use no proxy
+                  {selectedStore?.requires_proxy
+                    ? `${selectedStore.name} requires a proxy for bot protection. Please select a proxy to continue.`
+                    : "Select a proxy to use for this task, or skip to use no proxy"}
                 </p>
-              </div>
-
-              <div className="grid gap-3">
-                <div
-                  className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                    selectedProxy === null
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                  onClick={() => setSelectedProxy(null)}
-                >
-                  <div className="flex items-center gap-3">
-                    <Shield className="h-6 w-6 text-gray-400" />
-                    <div>
-                      <h4 className="font-medium">No Proxy</h4>
-                      <p className="text-sm text-gray-500">
-                        Use direct connection
+                {selectedStore?.requires_proxy && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-amber-600" />
+                      <p className="text-sm text-amber-800">
+                        <strong>Proxy Required:</strong> {selectedStore.name}{" "}
+                        has anti-bot protection that requires proxy usage.
                       </p>
                     </div>
                   </div>
-                </div>
+                )}
+              </div>
+
+              <div className="grid gap-3">
+                {!selectedStore?.requires_proxy && (
+                  <div
+                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                      selectedProxy === null
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                    onClick={() => setSelectedProxy(null)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Shield className="h-6 w-6 text-gray-400" />
+                      <div>
+                        <h4 className="font-medium">No Proxy</h4>
+                        <p className="text-sm text-gray-500">
+                          Use direct connection
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {proxies.map((proxy) => (
                   <div
@@ -703,6 +842,29 @@ export function TaskCreationWizard({
                     </div>
                   </div>
                 ))}
+
+                {selectedStore?.requires_proxy && proxies.length === 0 && (
+                  <div className="text-center py-8 text-gray-500">
+                    <Shield className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      No Proxies Available
+                    </h3>
+                    <p className="text-gray-500 mb-4">
+                      {selectedStore.name} requires a proxy, but you haven't set
+                      up any proxies yet.
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        onClose();
+                        router.push("/proxies");
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Set Up Proxies
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -921,7 +1083,7 @@ export function TaskCreationWizard({
                     <div className="space-y-1 text-sm">
                       <p>
                         <span className="text-gray-500">Profile:</span>{" "}
-                        {selectedProfile?.name}
+                        {selectedProfile?.profile_name}
                       </p>
                       <p>
                         <span className="text-gray-500">Account:</span>{" "}

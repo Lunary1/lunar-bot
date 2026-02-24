@@ -8,8 +8,92 @@ interface ScrapingJobData {
   storeId: string;
 }
 
+interface StoreSelectors {
+  name: string[];
+  price: string[];
+  image: string[];
+  availability: string[];
+  description: string[];
+  sku: string[];
+}
+
 export class ProductScraper {
   private browser: Browser | null = null;
+  private storeSelectors: Map<string, StoreSelectors> = new Map();
+
+  constructor() {
+    this.initializeStoreSelectors();
+  }
+
+  private initializeStoreSelectors() {
+    // Dreamland selectors
+    this.storeSelectors.set("dreamland", {
+      name: [
+        ".product-title",
+        ".product-name",
+        "h1",
+        '[data-testid="product-title"]',
+        ".product-details h1",
+      ],
+      price: [
+        ".price",
+        ".current-price",
+        ".product-price",
+        '[data-testid="price"]',
+        ".price-current",
+      ],
+      image: [
+        ".product-image img",
+        ".product-gallery img",
+        ".main-image img",
+        '[data-testid="product-image"]',
+      ],
+      availability: [
+        ".add-to-cart",
+        ".stock-status",
+        ".availability",
+        ".in-stock",
+        ".out-of-stock",
+      ],
+      description: [
+        ".product-description",
+        ".product-details",
+        ".description",
+        ".product-info",
+      ],
+      sku: [".sku", ".product-sku", "[data-sku]", ".product-code"],
+    });
+
+    // Pokémon Center EU selectors
+    this.storeSelectors.set("pokemon-center-eu", {
+      name: [".pdp-product-name", ".product-title", "h1", ".product-name"],
+      price: [".price", ".current-price", ".product-price", ".price-value"],
+      image: [".product-image img", ".pdp-image img", ".main-image img"],
+      availability: [
+        ".add-to-cart",
+        ".stock-status",
+        ".availability",
+        ".in-stock",
+      ],
+      description: [".product-description", ".pdp-description", ".description"],
+      sku: [".sku", ".product-sku", ".product-code"],
+    });
+
+    // Bol.com selectors
+    this.storeSelectors.set("bol-com", {
+      name: [".pdp-header__title", ".product-title", "h1", ".pdp-title"],
+      price: [".price-block__price", ".price", ".current-price", ".pdp-price"],
+      image: [".pdp-media img", ".product-image img", ".main-image img"],
+      availability: [
+        ".buy-block__cta",
+        ".add-to-cart",
+        ".stock-status",
+        ".availability",
+      ],
+      description: [".pdp-description", ".product-description", ".description"],
+      sku: [".sku", ".product-sku", ".ean"],
+    });
+  }
 
   async scrapeProduct(job: Job<ScrapingJobData>) {
     const { productId, url, storeId } = job.data;
@@ -28,9 +112,10 @@ export class ProductScraper {
       const page = await this.browser.newPage();
 
       // Set user agent to avoid detection
-      await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-      );
+      await page.setExtraHTTPHeaders({
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      });
 
       // Navigate to product page
       await page.goto(url, { waitUntil: "networkidle" });
@@ -39,7 +124,7 @@ export class ProductScraper {
       await page.waitForTimeout(2000);
 
       // Extract product information based on store
-      const productInfo = await this.extractProductInfo(page, storeId);
+      const productInfo = await this.extractProductInfo(page, storeId, url);
 
       // Update product in database
       await this.updateProduct(productId, productInfo);
@@ -65,9 +150,52 @@ export class ProductScraper {
     }
   }
 
-  private async extractProductInfo(page: Page, storeId: string) {
-    // Generic selectors that work across most e-commerce sites
-    const selectors = {
+  private async extractProductInfo(page: Page, storeId: string, url: string) {
+    // Get store-specific selectors or fallback to generic ones
+    const storeSelectors =
+      this.storeSelectors.get(storeId.toLowerCase()) ||
+      this.getGenericSelectors();
+
+    // Try to extract product name
+    let name = await this.extractTextBySelectors(page, storeSelectors.name);
+
+    // Try to extract price
+    let price = await this.extractPriceBySelectors(page, storeSelectors.price);
+
+    // Try to extract image
+    let imageUrl = await this.extractImageBySelectors(
+      page,
+      storeSelectors.image
+    );
+
+    // Check availability
+    let isAvailable = await this.checkAvailabilityBySelectors(
+      page,
+      storeSelectors.availability
+    );
+
+    // Try to extract description
+    let description = await this.extractTextBySelectors(
+      page,
+      storeSelectors.description
+    );
+
+    // Try to extract SKU
+    let sku = await this.extractTextBySelectors(page, storeSelectors.sku);
+
+    return {
+      name: name.trim() || "Unknown Product",
+      current_price: price,
+      is_available: isAvailable,
+      image_url: imageUrl,
+      description: description.trim(),
+      sku: sku.trim() || null,
+      last_updated: new Date().toISOString(),
+    };
+  }
+
+  private getGenericSelectors(): StoreSelectors {
+    return {
       name: [
         'h1[data-testid="product-title"]',
         "h1.product-title",
@@ -100,97 +228,99 @@ export class ProductScraper {
         ".product-description",
         '[class*="description"]',
       ],
+      sku: [".sku", ".product-sku", "[data-sku]", ".product-code"],
     };
+  }
 
-    // Try to extract product name
-    let name = "";
-    for (const selector of selectors.name) {
+  private async extractTextBySelectors(
+    page: Page,
+    selectors: string[]
+  ): Promise<string> {
+    for (const selector of selectors) {
       try {
         const element = await page.$(selector);
         if (element) {
-          name = (await element.textContent()) || "";
-          if (name.trim()) break;
+          const text = (await element.textContent()) || "";
+          if (text.trim()) return text.trim();
         }
       } catch (e) {
         continue;
       }
     }
+    return "";
+  }
 
-    // Try to extract price
-    let price = 0;
-    for (const selector of selectors.price) {
+  private async extractPriceBySelectors(
+    page: Page,
+    selectors: string[]
+  ): Promise<number> {
+    for (const selector of selectors) {
       try {
         const element = await page.$(selector);
         if (element) {
           const priceText = (await element.textContent()) || "";
           const priceMatch = priceText.match(/[\d,]+\.?\d*/);
           if (priceMatch) {
-            price = parseFloat(priceMatch[0].replace(",", ""));
-            break;
+            return parseFloat(priceMatch[0].replace(",", ""));
           }
         }
       } catch (e) {
         continue;
       }
     }
+    return 0;
+  }
 
-    // Try to extract image
-    let imageUrl = "";
-    for (const selector of selectors.image) {
+  private async extractImageBySelectors(
+    page: Page,
+    selectors: string[]
+  ): Promise<string> {
+    for (const selector of selectors) {
       try {
         const element = await page.$(selector);
         if (element) {
-          imageUrl = (await element.getAttribute("src")) || "";
-          if (imageUrl) break;
+          const imageUrl = (await element.getAttribute("src")) || "";
+          if (imageUrl) return imageUrl;
         }
       } catch (e) {
         continue;
       }
     }
+    return "";
+  }
 
-    // Check availability
-    let isAvailable = true;
-    for (const selector of selectors.availability) {
+  private async checkAvailabilityBySelectors(
+    page: Page,
+    selectors: string[]
+  ): Promise<boolean> {
+    for (const selector of selectors) {
       try {
         const element = await page.$(selector);
         if (element) {
           const availabilityText = (await element.textContent()) || "";
+          const isVisible = await element.isVisible();
+
+          // Check for out of stock indicators
           if (
             availabilityText.toLowerCase().includes("out of stock") ||
             availabilityText.toLowerCase().includes("unavailable") ||
-            availabilityText.toLowerCase().includes("sold out")
+            availabilityText.toLowerCase().includes("sold out") ||
+            availabilityText.toLowerCase().includes("uitverkocht") ||
+            availabilityText.toLowerCase().includes("niet beschikbaar")
           ) {
-            isAvailable = false;
-            break;
+            return false;
+          }
+
+          // If element is visible and doesn't contain out of stock text, assume available
+          if (isVisible) {
+            return true;
           }
         }
       } catch (e) {
         continue;
       }
     }
-
-    // Try to extract description
-    let description = "";
-    for (const selector of selectors.description) {
-      try {
-        const element = await page.$(selector);
-        if (element) {
-          description = (await element.textContent()) || "";
-          if (description.trim()) break;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-
-    return {
-      name: name.trim() || "Unknown Product",
-      current_price: price,
-      is_available: isAvailable,
-      image_url: imageUrl,
-      description: description.trim(),
-      last_updated: new Date().toISOString(),
-    };
+    return true; // Default to available if we can't determine
   }
 
   private async updateProduct(productId: string, productInfo: any) {
@@ -218,6 +348,45 @@ export class ProductScraper {
         price: productInfo.current_price,
         date: new Date().toISOString(),
       });
+    }
+  }
+
+  async scrapeProductData(url: string, storeId: string) {
+    try {
+      console.log(`🔍 Scraping product data for: ${url}`);
+
+      // Initialize browser if not already done
+      if (!this.browser) {
+        this.browser = await chromium.launch({
+          headless: true,
+          args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        });
+      }
+
+      const page = await this.browser.newPage();
+
+      // Set user agent to avoid detection
+      await page.setExtraHTTPHeaders({
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      });
+
+      // Navigate to product page
+      await page.goto(url, { waitUntil: "networkidle" });
+
+      // Wait a bit for dynamic content to load
+      await page.waitForTimeout(2000);
+
+      // Extract product information based on store
+      const productInfo = await this.extractProductInfo(page, storeId, url);
+
+      await page.close();
+
+      console.log(`✅ Successfully scraped product data: ${productInfo.name}`);
+      return productInfo;
+    } catch (error) {
+      console.error(`❌ Error scraping product data for ${url}:`, error);
+      return null;
     }
   }
 

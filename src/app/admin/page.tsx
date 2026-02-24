@@ -36,11 +36,25 @@ import {
   BarChart3,
   TrendingUp,
   TrendingDown,
+  ExternalLink,
+  Package,
+  Store,
+  Loader2,
 } from "lucide-react";
 import { useAuthContext } from "@/components/auth-provider";
 import { supabase } from "@/app/lib/supabaseClient";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import ProtectedRoute from "@/components/protected-route";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 interface User {
   id: string;
@@ -63,7 +77,43 @@ interface SystemMetrics {
   growthRate: number;
 }
 
+interface Store {
+  id: string;
+  name: string;
+  base_url: string;
+  is_active: boolean;
+}
+
+interface Product {
+  id: string;
+  store_id: string;
+  name: string;
+  sku?: string;
+  current_price?: number;
+  url: string;
+  image_url?: string;
+  is_available: boolean;
+  created_at: string;
+  stores?: Store;
+}
+
+interface ScrapedProduct {
+  name: string;
+  price: number | null;
+  imageUrl: string | null;
+  sku?: string;
+  isAvailable: boolean;
+}
+
 export default function AdminPage() {
+  return (
+    <ProtectedRoute>
+      <AdminPageContent />
+    </ProtectedRoute>
+  );
+}
+
+function AdminPageContent() {
   const { user, profile } = useAuthContext();
   const [users, setUsers] = useState<User[]>([]);
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
@@ -71,9 +121,30 @@ export default function AdminPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("users");
 
+  // Helper function to get task limits based on subscription tier
+  const getTaskLimit = (tier: string) => {
+    switch (tier) {
+      case "basic":
+        return 50;
+      case "premium":
+        return 200;
+      case "enterprise":
+        return -1; // unlimited
+      default:
+        return 5; // free tier
+    }
+  };
+
   // Check if user is admin
-  const isAdmin =
-    profile?.subscription_tier === "admin" || profile?.role === "admin";
+  const isAdmin = profile?.role === "admin";
+
+  // Debug logging
+  console.log("Admin Debug:", {
+    profile,
+    isAdmin,
+    subscription_tier: profile?.subscription_tier,
+    role: profile?.role,
+  });
 
   useEffect(() => {
     if (user && isAdmin) {
@@ -84,32 +155,38 @@ export default function AdminPage() {
 
   const fetchUsers = async () => {
     try {
-      const { data, error } = await supabase
-        .from("user_profiles")
-        .select(
-          `
-          *,
-          auth_user:auth.users(email, created_at)
-        `
-        )
-        .order("created_at", { ascending: false });
+      // Use RPC or direct query to get user data with emails
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "get_users_with_profiles"
+      );
 
-      if (error) throw error;
+      if (rpcError) {
+        // Fallback to basic profile data if RPC fails
+        console.log("RPC failed, using fallback:", rpcError);
+        const { data: profiles, error: profilesError } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .order("created_at", { ascending: false });
 
-      const formattedUsers =
-        data?.map((user) => ({
-          id: user.user_id,
-          email: user.auth_user?.email || "Unknown",
-          created_at: user.auth_user?.created_at || user.created_at,
-          profile: {
-            subscription_tier: user.subscription_tier,
-            subscription_status: user.subscription_status,
-            tasks_used: user.tasks_used || 0,
-            tasks_limit: user.tasks_limit || 0,
-          },
-        })) || [];
+        if (profilesError) throw profilesError;
 
-      setUsers(formattedUsers);
+        const formattedUsers =
+          profiles?.map((profile) => ({
+            id: profile.user_id,
+            email: "Email not available",
+            created_at: profile.created_at,
+            profile: {
+              subscription_tier: profile.subscription_tier,
+              subscription_status: profile.subscription_status,
+              tasks_used: 0,
+              tasks_limit: getTaskLimit(profile.subscription_tier),
+            },
+          })) || [];
+
+        setUsers(formattedUsers);
+      } else {
+        setUsers(rpcData || []);
+      }
     } catch (error) {
       console.error("Error fetching users:", error);
     } finally {
@@ -264,7 +341,7 @@ export default function AdminPage() {
               onValueChange={setActiveTab}
               className="w-full"
             >
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger
                   value="overview"
                   className="flex items-center gap-2"
@@ -275,6 +352,13 @@ export default function AdminPage() {
                 <TabsTrigger value="users" className="flex items-center gap-2">
                   <Users className="h-4 w-4" />
                   Users
+                </TabsTrigger>
+                <TabsTrigger
+                  value="products"
+                  className="flex items-center gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Products
                 </TabsTrigger>
                 <TabsTrigger value="system" className="flex items-center gap-2">
                   <Activity className="h-4 w-4" />
@@ -495,6 +579,11 @@ export default function AdminPage() {
                 </div>
               </TabsContent>
 
+              {/* Products Tab */}
+              <TabsContent value="products" className="space-y-6">
+                <ProductManagement />
+              </TabsContent>
+
               {/* System Tab */}
               <TabsContent value="system" className="space-y-6">
                 <Card>
@@ -628,5 +717,372 @@ export default function AdminPage() {
         </main>
       </SidebarInset>
     </SidebarProvider>
+  );
+}
+
+function ProductManagement() {
+  const [stores, setStores] = useState<Store[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addProductOpen, setAddProductOpen] = useState(false);
+  const [selectedStore, setSelectedStore] = useState("");
+  const [productUrl, setProductUrl] = useState("");
+  const [scrapedProduct, setScrapedProduct] = useState<ScrapedProduct | null>(
+    null
+  );
+  const [scraping, setScraping] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetchStores();
+    fetchProducts();
+  }, []);
+
+  const fetchStores = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("stores")
+        .select("*")
+        .eq("is_active", true)
+        .order("name");
+
+      if (error) throw error;
+      setStores(data || []);
+    } catch (error) {
+      console.error("Error fetching stores:", error);
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          `
+          *,
+          stores:store_id (
+            id,
+            name,
+            base_url
+          )
+        `
+        )
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (error) {
+      console.error("Error fetching products:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleScrapeProduct = async () => {
+    if (!productUrl || !selectedStore) return;
+
+    try {
+      setScraping(true);
+      const response = await fetch("/api/products/scrape-new", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: productUrl,
+          storeId: selectedStore,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to scrape product");
+      }
+
+      setScrapedProduct(result.product);
+    } catch (error) {
+      console.error("Error scraping product:", error);
+      alert("Failed to scrape product. Please check the URL and try again.");
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  const handleSaveProduct = async () => {
+    if (!scrapedProduct || !selectedStore) return;
+
+    try {
+      setSaving(true);
+      const response = await fetch("/api/products", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          store_id: selectedStore,
+          name: scrapedProduct.name,
+          sku: scrapedProduct.sku,
+          current_price: scrapedProduct.price,
+          url: productUrl,
+          image_url: scrapedProduct.imageUrl,
+          is_available: scrapedProduct.isAvailable,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to save product");
+      }
+
+      // Reset form and refresh products
+      setAddProductOpen(false);
+      setSelectedStore("");
+      setProductUrl("");
+      setScrapedProduct(null);
+      fetchProducts();
+      alert("Product added successfully!");
+    } catch (error) {
+      console.error("Error saving product:", error);
+      alert("Failed to save product. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!confirm("Are you sure you want to delete this product?")) return;
+
+    try {
+      const response = await fetch(`/api/products/${productId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete product");
+      }
+
+      fetchProducts();
+      alert("Product deleted successfully!");
+    } catch (error) {
+      console.error("Error deleting product:", error);
+      alert("Failed to delete product. Please try again.");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Product Management</h2>
+          <p className="text-gray-600">
+            Manage products available for user tasks
+          </p>
+        </div>
+        <Dialog open={addProductOpen} onOpenChange={setAddProductOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Product
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Add New Product</DialogTitle>
+              <DialogDescription>
+                Select a store and paste the product URL to automatically scrape
+                product details.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="store">Store</Label>
+                <Select value={selectedStore} onValueChange={setSelectedStore}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a store" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stores.map((store) => (
+                      <SelectItem key={store.id} value={store.id}>
+                        {store.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="url">Product URL</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="url"
+                    placeholder="https://www.store.com/product/..."
+                    value={productUrl}
+                    onChange={(e) => setProductUrl(e.target.value)}
+                  />
+                  <Button
+                    onClick={handleScrapeProduct}
+                    disabled={!productUrl || !selectedStore || scraping}
+                  >
+                    {scraping ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Scrape"
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {scrapedProduct && (
+                <div className="border rounded-lg p-4 space-y-3">
+                  <h3 className="font-semibold">Scraped Product Details</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label>Name</Label>
+                      <Input value={scrapedProduct.name} readOnly />
+                    </div>
+                    <div>
+                      <Label>Price</Label>
+                      <Input
+                        value={
+                          scrapedProduct.price
+                            ? `€${scrapedProduct.price}`
+                            : "No price found"
+                        }
+                        readOnly
+                      />
+                    </div>
+                    {scrapedProduct.sku && (
+                      <div>
+                        <Label>SKU</Label>
+                        <Input value={scrapedProduct.sku} readOnly />
+                      </div>
+                    )}
+                    <div>
+                      <Label>Image</Label>
+                      <Input
+                        value={scrapedProduct.imageUrl || "No image found"}
+                        readOnly
+                      />
+                    </div>
+                  </div>
+                  {scrapedProduct.imageUrl && (
+                    <div>
+                      <Label>Preview</Label>
+                      <img
+                        src={scrapedProduct.imageUrl}
+                        alt={scrapedProduct.name}
+                        className="w-32 h-32 object-cover border rounded"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    </div>
+                  )}
+                  <Button
+                    onClick={handleSaveProduct}
+                    disabled={saving}
+                    className="w-full"
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save Product"
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Products</CardTitle>
+          <CardDescription>
+            {products.length} products available across {stores.length} stores
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+          ) : products.length === 0 ? (
+            <div className="text-center p-8 text-gray-500">
+              No products found. Add your first product to get started.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {products.map((product) => (
+                <div
+                  key={product.id}
+                  className="flex items-start justify-between p-4 border rounded-lg"
+                >
+                  <div className="flex gap-4">
+                    {product.image_url && (
+                      <img
+                        src={product.image_url}
+                        alt={product.name}
+                        className="w-16 h-16 object-cover rounded"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    )}
+                    <div>
+                      <h3 className="font-medium">{product.name}</h3>
+                      <div className="flex items-center gap-2 text-sm text-gray-600 mt-1">
+                        <Store className="h-4 w-4" />
+                        <span>{product.stores?.name}</span>
+                        {product.current_price && (
+                          <>
+                            <span>•</span>
+                            <span>€{product.current_price}</span>
+                          </>
+                        )}
+                        {product.sku && (
+                          <>
+                            <span>•</span>
+                            <span>SKU: {product.sku}</span>
+                          </>
+                        )}
+                      </div>
+                      <Badge
+                        variant={product.is_available ? "default" : "secondary"}
+                        className="mt-2"
+                      >
+                        {product.is_available ? "Available" : "Out of Stock"}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => window.open(product.url, "_blank")}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleDeleteProduct(product.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

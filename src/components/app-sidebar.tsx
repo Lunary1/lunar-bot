@@ -15,6 +15,8 @@ import {
   LogOut,
   User,
   UserCheck,
+  Eye,
+  BarChart3,
 } from "lucide-react";
 
 import {
@@ -45,7 +47,7 @@ import { useRouter, usePathname } from "next/navigation";
 const items = [
   {
     title: "Dashboard",
-    url: "/",
+    url: "/dashboard",
     icon: Home,
   },
   {
@@ -77,6 +79,16 @@ const items = [
     title: "Monitor",
     url: "/monitor",
     icon: Activity,
+  },
+  {
+    title: "Watchlist",
+    url: "/watchlist",
+    icon: Eye,
+  },
+  {
+    title: "Analytics",
+    url: "/analytics",
+    icon: BarChart3,
   },
   {
     title: "Logs",

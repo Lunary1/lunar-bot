@@ -1,62 +1,119 @@
 import { supabase } from "@/app/lib/supabaseClient";
 import { ProductScraper } from "@/workers/ProductScraper";
+import { TaskExecutor } from "@/workers/TaskExecutor";
+import { Redis } from "ioredis";
 
 interface MonitoringConfig {
   checkInterval: number; // in minutes
   priceChangeThreshold: number; // percentage
   stockChangeEnabled: boolean;
   priceDropEnabled: boolean;
+  autoPurchaseEnabled: boolean;
+  batchSize: number;
+  delayBetweenBatches: number; // in milliseconds
 }
 
 export class ProductMonitor {
   private scraper: ProductScraper;
+  private taskExecutor: TaskExecutor;
   private monitoringInterval: NodeJS.Timeout | null = null;
   private config: MonitoringConfig;
+  private isRunning: boolean = false;
+  private redis: Redis;
 
   constructor(
+    redis: Redis,
     config: MonitoringConfig = {
       checkInterval: 30, // 30 minutes
       priceChangeThreshold: 5, // 5%
       stockChangeEnabled: true,
       priceDropEnabled: true,
+      autoPurchaseEnabled: true,
+      batchSize: 10,
+      delayBetweenBatches: 5000,
     }
   ) {
     this.config = config;
+    this.redis = redis;
     this.scraper = new ProductScraper();
+    this.taskExecutor = new TaskExecutor(redis);
   }
 
   async startMonitoring() {
+    if (this.isRunning) {
+      console.log("⚠️ Monitoring service is already running");
+      return;
+    }
+
     console.log("🔍 Starting product monitoring service...");
+    this.isRunning = true;
 
     // Start monitoring interval
     this.monitoringInterval = setInterval(async () => {
-      await this.checkAllProducts();
+      try {
+        await this.checkAllProducts();
+      } catch (error) {
+        console.error("Error in monitoring interval:", error);
+      }
     }, this.config.checkInterval * 60 * 1000);
 
     // Run initial check
     await this.checkAllProducts();
+
+    console.log("✅ Product monitoring service started successfully");
   }
 
   async stopMonitoring() {
+    if (!this.isRunning) {
+      console.log("⚠️ Monitoring service is not running");
+      return;
+    }
+
+    console.log("🛑 Stopping product monitoring service...");
+    this.isRunning = false;
+
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
       this.monitoringInterval = null;
     }
+
     await this.scraper.close();
+    await this.taskExecutor.close();
+
+    console.log("✅ Product monitoring service stopped successfully");
   }
+
+  getStatus() {
+    return {
+      isRunning: this.isRunning,
+      config: this.config,
+      lastCheck: this.lastActivity,
+    };
+  }
+
+  private lastActivity: Date | null = null;
 
   private async checkAllProducts() {
     try {
       console.log("🔍 Checking all monitored products...");
+      this.lastActivity = new Date();
 
-      // Get all products that need monitoring
+      // Get all products that need monitoring with watchlist information
       const { data: products, error } = await supabase
         .from("products")
         .select(
           `
           *,
           store:stores(id, name, domain),
-          watchlists:user_watchlists(user_id, alert_on_stock, alert_on_price_drop)
+          watchlists:user_watchlists(
+            id,
+            user_id, 
+            alert_on_stock, 
+            alert_on_price_drop,
+            auto_purchase,
+            max_price,
+            quantity
+          )
         `
         )
         .eq("is_active", true);
@@ -74,16 +131,21 @@ export class ProductMonitor {
       console.log(`📊 Monitoring ${products.length} products`);
 
       // Process products in batches to avoid overwhelming the system
-      const batchSize = 10;
-      for (let i = 0; i < products.length; i += batchSize) {
-        const batch = products.slice(i, i + batchSize);
+      for (let i = 0; i < products.length; i += this.config.batchSize) {
+        const batch = products.slice(i, i + this.config.batchSize);
+
+        // Process batch concurrently
         await Promise.all(batch.map((product) => this.checkProduct(product)));
 
         // Add delay between batches
-        if (i + batchSize < products.length) {
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+        if (i + this.config.batchSize < products.length) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, this.config.delayBetweenBatches)
+          );
         }
       }
+
+      console.log("✅ Completed product monitoring cycle");
     } catch (error) {
       console.error("Error in product monitoring:", error);
     }
@@ -118,6 +180,16 @@ export class ProductMonitor {
         product.current_price !== currentData.current_price
       ) {
         await this.handlePriceChange(product, currentData);
+      }
+
+      // Check for auto-purchase opportunities
+      if (
+        this.config.autoPurchaseEnabled &&
+        currentData.is_available &&
+        product.watchlists &&
+        product.watchlists.length > 0
+      ) {
+        await this.handleAutoPurchase(product, currentData);
       }
 
       // Update product with new data
@@ -264,5 +336,133 @@ export class ProductMonitor {
         product.name
       } price dropped ${Math.abs(changePercent).toFixed(2)}% to €${newPrice}`
     );
+  }
+
+  private async handleAutoPurchase(product: any, currentData: any) {
+    try {
+      console.log(
+        `🛒 Checking auto-purchase opportunities for: ${product.name}`
+      );
+
+      // Check each watchlist item for auto-purchase eligibility
+      for (const watchlist of product.watchlists) {
+        if (!watchlist.auto_purchase) continue;
+
+        // Check if price is within user's budget
+        if (
+          watchlist.max_price &&
+          currentData.current_price > watchlist.max_price
+        ) {
+          console.log(
+            `💰 Price ${currentData.current_price} exceeds max price ${watchlist.max_price} for user ${watchlist.user_id}`
+          );
+          continue;
+        }
+
+        // Check if user has valid store account
+        const { data: storeAccount } = await supabase
+          .from("user_store_accounts")
+          .select("*")
+          .eq("user_id", watchlist.user_id)
+          .eq("store_id", product.store_id)
+          .eq("is_active", true)
+          .single();
+
+        if (!storeAccount) {
+          console.log(
+            `❌ No valid store account found for user ${watchlist.user_id} on store ${product.store_id}`
+          );
+          continue;
+        }
+
+        // Create auto-purchase task
+        await this.createAutoPurchaseTask(
+          watchlist.user_id,
+          product,
+          storeAccount,
+          watchlist.quantity || 1,
+          watchlist.id
+        );
+      }
+    } catch (error) {
+      console.error(`Error handling auto-purchase for ${product.name}:`, error);
+    }
+  }
+
+  private async createAutoPurchaseTask(
+    userId: string,
+    product: any,
+    storeAccount: any,
+    quantity: number,
+    watchlistId: string
+  ) {
+    try {
+      console.log(
+        `🚀 Creating auto-purchase task for user ${userId}, product: ${product.name}`
+      );
+
+      // Create purchase task in database
+      const { data: task, error } = await supabase
+        .from("purchase_tasks")
+        .insert({
+          user_id: userId,
+          product_id: product.id,
+          store_account_id: storeAccount.id,
+          quantity: quantity,
+          status: "queued",
+          priority: 10, // High priority for auto-purchase
+          auto_purchase: true,
+          watchlist_id: watchlistId,
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error creating auto-purchase task:", error);
+        return;
+      }
+
+      // Queue the task for execution
+      await this.taskExecutor.addTask({
+        taskId: task.id,
+        userId: userId,
+        productId: product.id,
+        storeAccountId: storeAccount.id,
+        priority: 10,
+      });
+
+      // Update watchlist status
+      await supabase
+        .from("user_watchlists")
+        .update({
+          status: "purchasing",
+          last_auto_purchase_attempt: new Date().toISOString(),
+        })
+        .eq("id", watchlistId);
+
+      console.log(`✅ Auto-purchase task created and queued: ${task.id}`);
+
+      // Send notification
+      await this.sendAutoPurchaseNotification(userId, product, task.id);
+    } catch (error) {
+      console.error("Error creating auto-purchase task:", error);
+    }
+  }
+
+  private async sendAutoPurchaseNotification(
+    userId: string,
+    product: any,
+    taskId: string
+  ) {
+    console.log(
+      `📧 Auto-purchase notification for user ${userId}: Attempting to purchase ${product.name} (Task: ${taskId})`
+    );
+
+    // In production, this would send:
+    // - Email notifications
+    // - Discord webhooks
+    // - Telegram messages
+    // - Push notifications
   }
 }
